@@ -1,0 +1,15 @@
+# Core data plumbing (required for manifest / assignment / caching / streaming)
+pyarrow>=15
+fsspec
+s3fs
+datasets>=2.19
+numpy
+pyyaml
+
+# Training stack (required to actually run the Trainer; heavy)
+torch
+transformers>=4.40
+accelerate>=0.30
+
+# Tests
+pytest
