@@ -1,0 +1,31 @@
+# Example run config for s3parquet_ddp.
+# Load this into s3parquet_ddp.config.RunConfig (e.g. RunConfig(**yaml.safe_load(...))).
+
+train_data: "s3://my-bucket/dataset/train/"        # prefix, glob, or single file
+eval_data: "s3://my-bucket/dataset/eval/"
+manifest_path: "/efs/manifests/train_manifest.parquet"      # shared EFS
+eval_manifest_path: "/efs/manifests/eval_manifest.parquet"
+
+# Credentials / endpoint passed through to s3fs.
+storage_options:
+  key: "${AWS_ACCESS_KEY_ID}"
+  secret: "${AWS_SECRET_ACCESS_KEY}"
+  # client_kwargs: { region_name: "us-east-1" }
+
+# One-time per-node copy of the shard to local NVMe, then read locally each epoch.
+cache_to_local: true
+local_cache_dir: "/mnt/nvme/parquet_cache"
+cache_max_workers: 8
+cache_check_space: true
+
+assignment_strategy: "lpt"          # lpt = row-balanced; snake = equal file count
+per_device_train_batch_size: 8
+grad_accum_steps: 1
+num_epochs: 5
+shuffle_buffer: 10000
+base_seed: 0
+
+dataloader_num_workers: 4
+pin_memory: true
+
+output_dir: "/efs/checkpoints/run"  # checkpoints on shared EFS (survive node loss)
