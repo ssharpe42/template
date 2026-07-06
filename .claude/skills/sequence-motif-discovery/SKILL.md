@@ -39,8 +39,8 @@ The loader accepts JSONL (one line per account) in two equivalent shapes:
 `{"id": "...", "label": "fraud", "events": [...], "times": [...]}` or the native
 `{"account_id": ..., "label": "fraud", "event_tokens": [...], "event_times": [...]}`.
 An event may be a single token, a list of tokens (itemset event), or a composite
-string `"[EVT:type]---feat1:v1--feat2:v2"` (split on `---` after the event-type
-header, then `--` between features; token values must not contain `--`). Both
+string `"[EVT:type]--feat1:v1--feat2:v2"` (`--` separates tokens; token text must
+not itself contain `--`, single `-` is fine). Both
 `feat=val` and `feat:val` token styles parse. A `label` field is REQUIRED on every
 record; numeric labels are fine (0/1 → `--pos-label 1`, and e.g.
 `--random-cut-label 0`). Times are

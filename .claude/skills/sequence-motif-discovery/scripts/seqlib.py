@@ -4,9 +4,9 @@ Data format (JSONL, one account per line):
     {"id": "a1", "label": "fraud", "events": ["device=new", ["txn=high", "geo=us"]],
      "times": [1710000000, 1710000345]}
 Each event is a token string, a list of token strings (itemset event), or a
-composite string "[EVT:type]---feat1:v1--feat2:v2--feat3:v3" (split on '---'
-after the event-type header, then '--' between feature tokens; values must not
-contain '--'). Key aliases are accepted: account_id/event_tokens/event_times.
+composite string "[EVT:type]--feat1:v1--feat2:v2--feat3:v3" ('--' separates
+the tokens; token text must not itself contain '--', single '-' is fine).
+Key aliases are accepted: account_id/event_tokens/event_times.
 "label" is required per record under any key set; numeric labels (0/1) are
 compared as strings, so pass --pos-label 1.
 "times" is optional: epoch seconds (numbers) or ISO-8601 strings, one per event.
@@ -77,13 +77,8 @@ def parse_duration(v):
 
 def _norm_event(ev):
     if isinstance(ev, str):
-        if "--" in ev:  # composite: "[EVT:x]---f1:v1--f2:v2"
-            if "---" in ev:
-                head, rest = ev.split("---", 1)
-                parts = [head] + rest.split("--")
-            else:
-                parts = ev.split("--")
-            return frozenset(p for p in parts if p)
+        if "--" in ev:  # composite: "[EVT:x]--f1:v1--f2:v2"
+            return frozenset(p for p in ev.split("--") if p)
         return frozenset([ev])
     return frozenset(str(t) for t in ev)
 

@@ -75,7 +75,7 @@ def main():
     ap.add_argument("--native-format", action="store_true",
                     help="with --itemset: emit account_id/event_tokens/"
                          "event_times keys and composite "
-                         "'[EVT:x]---f:v--f:v' event strings with ':' values")
+                         "'[EVT:x]--f:v--f:v' event strings with ':' values")
     args = ap.parse_args()
     if args.native_format and not args.itemset:
         ap.error("--native-format requires --itemset")
@@ -126,8 +126,7 @@ def main():
     if args.native_format:
         def composite(ev):
             toks = [ev] if isinstance(ev, str) else list(ev)
-            toks = [t.replace("=", ":") for t in toks]
-            return toks[0] + "---" + "--".join(toks[1:]) if len(toks) > 1 else toks[0]
+            return "--".join(t.replace("=", ":") for t in toks)
         recs = [{"account_id": r["id"], "label": r["label"],
                  "event_tokens": [composite(e) for e in r["events"]],
                  "event_times": r["times"]} for r in recs]
