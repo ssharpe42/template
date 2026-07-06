@@ -44,8 +44,11 @@ header, then `--` between features; token values must not contain `--`). Both
 `feat=val` and `feat:val` token styles parse. A `label` field is REQUIRED on every
 record; numeric labels are fine (0/1 → `--pos-label 1`, and e.g.
 `--random-cut-label 0`). Times are
-optional (epoch seconds or ISO-8601, one per event) and unlock time-based
-constraints, gap tokens, and recency windowing. Then run:
+optional (one per event) and unlock time-based constraints, gap tokens, and recency
+windowing; numeric times may be in any unit — pass `--time-unit days` for decimal
+day-floats (1.1 = 1 day + 2.4h), `--time-unit ms`, etc., on EVERY script call, and
+they are converted to seconds on load so duration strings (`6mo`, `1h`) and DSL time
+constraints keep meaning real time. ISO-8601 strings also work. Then run:
 
 ```bash
 python scripts/profile_data.py data.jsonl --pos-label fraud

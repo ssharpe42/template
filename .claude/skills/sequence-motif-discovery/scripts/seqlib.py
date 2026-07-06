@@ -43,12 +43,21 @@ class Dataset:
         return any(t is not None for t in self.times)
 
 
-def parse_time(v):
+TIME_UNITS = {"seconds": 1.0, "ms": 0.001, "minutes": 60.0, "hours": 3600.0,
+              "days": 86400.0}
+
+
+def parse_time(v, scale=1.0):
+    """Numeric times are multiplied by scale (e.g. 86400 for day-float data) so
+    all times are seconds internally; ISO-8601 strings are already absolute."""
     if v is None:
         return None
     if isinstance(v, (int, float)):
-        return float(v)
-    return datetime.fromisoformat(str(v)).timestamp()
+        return float(v) * scale
+    try:
+        return float(v) * scale
+    except ValueError:
+        return datetime.fromisoformat(str(v)).timestamp()
 
 
 _DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800,
@@ -104,7 +113,7 @@ def add_gap_tokens(seq, times, edges):
 
 def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=None,
                  gap_buckets=None, random_cut_label=None, random_cut_seed=0,
-                 min_span_seconds=None):
+                 min_span_seconds=None, time_unit="seconds"):
     """Load and optionally window each sequence to its recent tail.
 
     recent_seconds: keep only events within this duration of the account's
@@ -121,10 +130,15 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
         recent_seconds so every kept account contributes the same observation
         period and window length can't leak the label.
     Durations may be given as '6mo'/'90d'-style strings.
+    time_unit: unit of NUMERIC time values in the data ('seconds', 'ms',
+        'minutes', 'hours', 'days'). Decimal day-floats like 1.1 (= 1 day +
+        2.4h) scale linearly to seconds internally, so duration strings and
+        DSL time constraints keep meaning real time regardless of input unit.
     """
     excl = set(exclude_tokens)
     recent_seconds = parse_duration(recent_seconds)
     min_span_seconds = parse_duration(min_span_seconds)
+    tscale = TIME_UNITS[time_unit]
     cut_rng = random.Random(random_cut_seed)
     ds = Dataset()
 
@@ -168,9 +182,10 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
         rows = {}
         with open(path, newline="") as f:
             for r in csv.DictReader(f):
-                key = (float(r["order"]), parse_time(r.get("time")) or 0.0)
+                t = parse_time(r.get("time"), tscale)
+                key = (float(r["order"]), t or 0.0)
                 rows.setdefault(r["id"], (r["label"], []))[1].append(
-                    (key, frozenset([r["token"]]), parse_time(r.get("time")))
+                    (key, frozenset([r["token"]]), t)
                 )
         for aid, (label, evs) in rows.items():
             evs.sort(key=lambda x: x[0])
@@ -194,7 +209,7 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
                     raise ValueError(f"account {aid} has no 'label' field — every "
                                      "record needs one (e.g. fraud/good)")
                 add(aid, rec["label"], [_norm_event(e) for e in events],
-                    [parse_time(t) for t in times] if times else None)
+                    [parse_time(t, tscale) for t in times] if times else None)
     return ds
 
 
@@ -411,6 +426,11 @@ def add_windowing_args(ap):
                          "point (random view), e.g. 'good' — mimics fraud "
                          "sequences pre-truncated at a leak cutoff (D2c)")
     ap.add_argument("--random-cut-seed", type=int, default=0)
+    ap.add_argument("--time-unit", default="seconds", choices=sorted(TIME_UNITS),
+                    help="unit of numeric time values in the data (e.g. 'days' "
+                         "for decimal day-floats like 1.1); everything is "
+                         "converted to seconds on load so duration strings "
+                         "('6mo', '1h') stay meaningful")
 
 
 def windowing_kwargs(args):
@@ -422,4 +442,5 @@ def windowing_kwargs(args):
                         if args.gap_buckets else None),
         "random_cut_label": args.random_cut_label,
         "random_cut_seed": args.random_cut_seed,
+        "time_unit": args.time_unit,
     }
