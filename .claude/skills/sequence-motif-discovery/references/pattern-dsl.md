@@ -53,6 +53,9 @@ a step on event *type* regardless of its other feature tokens.
   (greedy left-to-right count; default 1).
 
 Matching uses backtracking, so gap/window constraints are exact, not greedy-approximate.
+It stays fast on very long sequences (10k+ events): each step's predicate is evaluated
+at most once per event (memoized candidate cursors), and constraints become scan bounds
+rather than per-event checks, so tight windows only ever touch their neighborhoods.
 
 ## Timing semantics, precisely
 

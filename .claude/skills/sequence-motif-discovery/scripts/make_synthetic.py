@@ -43,7 +43,7 @@ def noise_event(rng, itemset=False):
                               for f in EVENT_TYPES[et]]
 
 
-def base_seq(rng, lo=15, hi=60, itemset=False):
+def base_seq(rng, lo, hi, itemset=False):
     return [noise_event(rng, itemset) for _ in range(rng.randint(lo, hi))]
 
 
@@ -69,6 +69,11 @@ def main():
     ap.add_argument("--n-good", type=int, default=800)
     ap.add_argument("--n-fraud", type=int, default=150)
     ap.add_argument("--seed", type=int, default=7)
+    ap.add_argument("--min-events", type=int, default=15,
+                    help="min sequence length (raise for long-sequence "
+                         "stress tests)")
+    ap.add_argument("--max-events", type=int, default=60,
+                    help="max sequence length")
     ap.add_argument("--itemset", action="store_true",
                     help="emit [EVT:type]+feature-token itemset events; the "
                          "planted motif lives in within-event conjunctions")
@@ -107,7 +112,7 @@ def main():
 
     recs = []
     for i in range(args.n_fraud):
-        seq = base_seq(rng, itemset=args.itemset)
+        seq = base_seq(rng, args.min_events, args.max_events, args.itemset)
         gaps = [rng.uniform(3600, 48 * 3600) for _ in seq]  # noise: 1h-2d apart
         if rng.random() < 0.7:
             inject(seq, gaps, rng, motif1())
@@ -116,7 +121,7 @@ def main():
         recs.append({"id": f"f{i:04d}", "label": "fraud", "events": seq,
                      "times": times_from(gaps)})
     for i in range(args.n_good):
-        seq = base_seq(rng, itemset=args.itemset)
+        seq = base_seq(rng, args.min_events, args.max_events, args.itemset)
         gaps = [rng.uniform(3600, 48 * 3600) for _ in seq]
         if rng.random() < 0.6:
             seq[rng.randint(0, min(5, len(seq) - 1))] = protective()

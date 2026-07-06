@@ -215,12 +215,49 @@ patterns matter most. Ask the user.
 
 ## Scaling notes
 
-The bundled miner is pure-stdlib Python and comfortable to ~100k sequences × ~100 events.
-First lever when it's slow: shrink sequences with `--recent-seconds`/`--recent-events`
-(D5b) and/or constrain mining with `--max-gap`/`--max-time-gap`, which prunes projections
-hard. Beyond that: sample for mining (stratified, verify on full), or swap Phase 1 for SPMF
-(Java, has CM-SPADE/BIDE/contrast miners) keeping the same DSL/verifier. The verifier is
-linear in (patterns × events) and rarely the bottleneck.
+The bundled miner and verifier are pure-stdlib Python, built to stay usable on long
+histories (sequences of 10k+ events) via two mechanisms:
+
+**Multi-core parallelism.** Mining and verification take `--jobs` (default 0 = all
+cores of whatever machine runs them — nothing is tuned to a specific core count; pass
+`--jobs 1` to force serial). Work partitions along the natural grain of each algorithm:
+
+- *Mining* parallelizes over **starting tokens**: the parent makes one pass building
+  every frequent token's root projections (exactly the level-1 work the serial miner
+  always did), then each token roots an independent projected-database subtree mined in
+  a worker. Workers cover disjoint regions of the pattern space, so results merge by
+  concatenation and are **bit-identical to a serial run**. Tokens are dealt into small
+  frequency-ordered groups with dynamic dispatch because subtree costs vary wildly.
+- *Verification* parallelizes over **accounts** (embarrassingly parallel): account
+  chunks fan out to workers, matched-id lists come back.
+- Workers are forked, so the dataset and root projections are inherited
+  **copy-on-write — never pickled**; only small task descriptions and id lists cross
+  process boundaries. On platforms without fork the scripts silently run serial.
+  The root-projection pass and dataset load are the remaining serial fraction, so
+  speedup is best when mining is deep (`--max-len` 3–4, low support) or patterns are
+  many — which is exactly when you need it.
+
+**Long-sequence matching.** `pattern_matches` uses memoized candidate cursors: each
+step's predicate is evaluated **at most once per event**, and only inside index ranges
+the search actually visits (scanned coverage is tracked as intervals, in lazy chunks).
+This kills both failure modes of naive backtracking on 10k-event sequences — exponential
+predicate re-evaluation on dense candidates, and paying for the whole sequence when a
+tight `time_window` only ever needed a few small neighborhoods. Gap/window constraints
+are converted to scan *bounds* (binary search on the time array) rather than per-event
+checks.
+
+Levers when it's still slow, in order:
+1. Shrink sequences with `--recent-seconds`/`--recent-events` (D5b) — linear payoff,
+   and usually the methodologically right move anyway.
+2. Constrain mining with `--max-time-gap`/`--max-gap`: prunes projections hard (often
+   10–20× on top of parallelism) and denoises candidates.
+3. Raise `--min-pos-support`; sample accounts for mining (stratified, verify on full).
+4. Note that with a gap constraint set, projections keep *all* valid positions per
+   sequence (needed for correctness), so memory grows with sequence length × support;
+   the constraint itself is what keeps those position sets small — avoid `--max-gap`
+   values in the hundreds on 10k-event sequences.
+5. Swap Phase 1 for SPMF (Java: CM-SPADE/BIDE/contrast miners), keeping the same
+   DSL/verifier — everything downstream is miner-agnostic.
 
 ## Key references
 

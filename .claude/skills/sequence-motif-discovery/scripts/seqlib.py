@@ -21,7 +21,10 @@ from __future__ import annotations
 import csv
 import json
 import math
+import multiprocessing
+import os
 import random
+from bisect import bisect_left, bisect_right
 from dataclasses import dataclass, field
 from datetime import datetime
 
@@ -264,40 +267,146 @@ def pred_match(event, pred, sep="="):
 
 # ------------------------------------------------------------------ matching
 
-def _step_ok(seq, times, cons, i, prev, first):
-    """Constraint checks for matching steps[si] at index i (prev/first = indices
-    of previous/first matched step, or None). Returns 'stop' when no later i can
-    satisfy either (positions and times are both increasing)."""
+class _StepCands:
+    """Lazily discovered candidate positions for one step's predicate.
+
+    The predicate is evaluated at most once per event and only inside ranges
+    the search actually asks for: hits are memoized (so backtracking never
+    re-tests an event — the failure mode that makes naive matching blow up on
+    10k+-event sequences) and scanned coverage is tracked as intervals (so
+    tightly-windowed patterns never pay for the events between windows)."""
+    __slots__ = ("seq", "pred", "hits", "cov")
+
+    def __init__(self, seq, pred):
+        self.seq = seq
+        self.pred = pred
+        self.hits = []   # candidate positions found so far, ascending
+        self.cov = []    # disjoint, sorted (lo, hi) ranges already scanned
+
+    def _ensure(self, lo, hi):
+        """Scan any not-yet-covered parts of [lo, hi)."""
+        seq, pred = self.seq, self.pred
+        found, cur = [], lo
+        for l, h in self.cov:
+            if h <= cur:
+                continue
+            if l >= hi:
+                break
+            for i in range(cur, min(l, hi)):
+                if pred_match(seq[i], pred):
+                    found.append(i)
+            cur = max(cur, h)
+            if cur >= hi:
+                break
+        for i in range(cur, hi):
+            if pred_match(seq[i], pred):
+                found.append(i)
+        if found:
+            if self.hits and found[0] < self.hits[-1]:
+                self.hits = sorted(self.hits + found)  # rare out-of-order scan
+            else:
+                self.hits.extend(found)
+        merged, nl, nh = [], lo, hi
+        for l, h in self.cov:
+            if h < nl or l > nh:
+                merged.append((l, h))
+            else:
+                nl, nh = min(nl, l), max(nh, h)
+        merged.append((nl, nh))
+        merged.sort()
+        self.cov = merged
+
+    _CHUNK = 256  # ensure-granularity: an early match never pays for more
+
+    def _covered_until(self, pos):
+        """End of the scanned interval containing pos, or pos if unscanned."""
+        for l, h in self.cov:
+            if l <= pos < h:
+                return h
+            if l > pos:
+                break
+        return pos
+
+    def iter_from(self, lo, hi):
+        """Yield candidate positions in [lo, hi), ascending. Uncovered ground
+        is scanned chunk by chunk (a consumer that stops early — match found —
+        never pays for the rest of the range); already-covered stretches are
+        traversed in one bisect jump, keeping repeat queries logarithmic."""
+        pos = lo
+        while pos < hi:
+            end = self._covered_until(pos)
+            if end <= pos:  # unscanned: test one chunk of events
+                end = min(pos + self._CHUNK, hi)
+                self._ensure(pos, end)
+            else:
+                end = min(end, hi)
+            k = bisect_left(self.hits, pos)
+            while k < len(self.hits):
+                p = self.hits[k]
+                if p >= end:
+                    break
+                yield p
+                # re-sync: recursion below the yield may extend this cursor
+                # when a pattern repeats the same step (shared memo)
+                k = bisect_right(self.hits, p)
+            pos = end
+
+
+def _scan_bound(times, cons, n, prev, first):
+    """Exclusive upper bound on positions that can still satisfy the gap and
+    window constraints given the previous/first matched indices (positions and
+    times both increase, so each constraint is a prefix condition)."""
+    hi = n
     if prev is not None:
         mg = cons.get("max_gap")
-        if mg is not None and i - prev - 1 > mg:
-            return "stop"
+        if mg is not None:
+            hi = min(hi, prev + mg + 2)   # i - prev - 1 <= mg
         mtg = cons.get("max_time_gap")
-        if mtg is not None and times and times[i] - times[prev] > mtg:
-            return "stop"
+        if mtg is not None and times:
+            hi = min(hi, bisect_right(times, times[prev] + mtg))
     if first is not None:
         w = cons.get("window")
-        if w is not None and i - first + 1 > w:
-            return "stop"
+        if w is not None:
+            hi = min(hi, first + w)       # i - first + 1 <= w
         tw = cons.get("time_window")
-        if tw is not None and times and times[i] - times[first] > tw:
-            return "stop"
-    return "ok"
+        if tw is not None and times:
+            hi = min(hi, bisect_right(times, times[first] + tw))
+    return hi
 
 
-def _find_from(seq, times, steps, cons, si, prev, first):
-    """Backtracking search; returns matched index of the last step, or None."""
-    if si == len(steps):
+def _find_from(cands, times, cons, si, prev, first, floor):
+    """Backtracking search over lazy candidate cursors; returns the matched
+    index of the last step, or None. Constraints shrink the scanned range up
+    front (via _scan_bound) instead of being tested per event."""
+    if si == len(cands):
         return prev
-    for i in range((prev + 1) if prev is not None else 0, len(seq)):
-        if _step_ok(seq, times, cons, i, prev, first) == "stop":
-            break
-        if not pred_match(seq[i], steps[si]):
-            continue
-        end = _find_from(seq, times, steps, cons, si + 1, i,
-                         first if first is not None else i)
+    lo = (prev + 1) if prev is not None else floor
+    hi = _scan_bound(times, cons, len(cands[si].seq), prev, first)
+    for i in cands[si].iter_from(lo, hi):
+        end = _find_from(cands, times, cons, si + 1, i,
+                         first if first is not None else i, floor)
         if end is not None:
             return end
+    return None
+
+
+def _greedy_from(cands, times, cons, floor):
+    """Non-backtracking search, complete whenever there are no
+    consecutive-pair constraints (max_gap/max_time_gap): with the first step's
+    match fixed, taking the earliest valid candidate for every later step can
+    only leave more room for the steps after it (exchange argument), so if
+    greedy fails for a given first match, nothing succeeds for it. Avoids the
+    quadratic backtracking cost of late-failing patterns on long sequences."""
+    n = len(cands[0].seq)
+    for f in cands[0].iter_from(floor, n):
+        hi = _scan_bound(times, cons, n, None, f)
+        prev = f
+        for c in cands[1:]:
+            prev = next(c.iter_from(prev + 1, hi), None)
+            if prev is None:
+                break
+        if prev is not None:
+            return prev
     return None
 
 
@@ -307,9 +416,11 @@ def pattern_matches(seq, pattern, times=None):
         if k in cons:
             cons[k] = parse_duration(cons[k])  # allow '10m' / '6h' in the DSL
     steps = pattern["steps"]
-    for pred in pattern.get("absent", []) or []:
-        if any(pred_match(ev, pred) for ev in seq):
-            return False
+    absent = pattern.get("absent", []) or []
+    if absent:
+        for ev in seq:
+            if any(pred_match(ev, p) for p in absent):
+                return False
     scope = cons.get("scope", "anywhere")
     win = cons.get("window")
     if scope == "prefix" and win is not None:
@@ -317,18 +428,27 @@ def pattern_matches(seq, pattern, times=None):
     elif scope == "suffix" and win is not None:
         seq, times = seq[-win:], times[-win:] if times else None
 
+    # identical steps (common in repeat motifs) share one memoized cursor
+    cands = []
+    for st in steps:
+        for prev_st, cur in zip(steps, cands):
+            if prev_st == st:
+                cands.append(cur)
+                break
+        else:
+            cands.append(_StepCands(seq, st))
     need = pattern.get("min_count", 1)
-    start, found = 0, 0
-    while start < len(seq):
-        sub_t = times[start:] if times else None
-        end = _find_from(seq[start:], sub_t, steps, cons, 0, None, None)
+    greedy = cons.get("max_gap") is None and cons.get("max_time_gap") is None
+    floor, found = 0, 0
+    while True:
+        end = (_greedy_from(cands, times, cons, floor) if greedy
+               else _find_from(cands, times, cons, 0, None, None, floor))
         if end is None:
             return False
         found += 1
         if found >= need:
             return True
-        start += end + 1
-    return False
+        floor = end + 1
 
 
 # ---------------------------------------------------------------- statistics
@@ -398,6 +518,66 @@ def is_subsequence(small, big):
     """True if token-list `small` is a subsequence of token-list `big`."""
     it = iter(big)
     return all(tok in it for tok in small)
+
+
+# ------------------------------------------------------------------ parallel
+
+_PARALLEL_ENV = None
+
+
+def parallel_env():
+    """The read-only shared state installed by run_parallel for the current
+    task (dataset, patterns, mining params). Workers read it instead of
+    receiving it as an argument so it is never pickled per task."""
+    return _PARALLEL_ENV
+
+
+def resolve_jobs(jobs):
+    """0/None = all cores."""
+    return jobs if jobs and jobs > 0 else (os.cpu_count() or 1)
+
+
+def chunk_bounds(n, k):
+    """Split range(n) into at most k contiguous (lo, hi) bounds."""
+    if n <= 0:
+        return []
+    k = max(1, min(k, n))
+    step = math.ceil(n / k)
+    return [(lo, min(n, lo + step)) for lo in range(0, n, step)]
+
+
+def run_parallel(fn, tasks, jobs=0, env=None):
+    """Map a module-level fn over tasks across worker processes.
+
+    `env` is installed as a module global BEFORE the pool forks, so children
+    inherit the big read-only state copy-on-write (no pickling); fn reads it
+    back via parallel_env(). Tasks and results should stay small (index
+    ranges, token groups, id lists). Runs serially when jobs == 1, there is a
+    single task, or the platform can't fork (the fn code path is identical
+    either way, so results don't depend on the mode)."""
+    global _PARALLEL_ENV
+    if not tasks:
+        return []
+    n = min(resolve_jobs(jobs), len(tasks))
+    _PARALLEL_ENV = env
+    try:
+        if n > 1:
+            try:
+                ctx = multiprocessing.get_context("fork")
+            except ValueError:
+                ctx = None
+            if ctx is not None:
+                with ctx.Pool(n) as pool:
+                    return pool.map(fn, tasks, chunksize=1)
+        return [fn(t) for t in tasks]
+    finally:
+        _PARALLEL_ENV = None
+
+
+def add_jobs_arg(ap):
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="worker processes for the heavy loops "
+                         "(0 = all cores, 1 = serial)")
 
 
 def add_windowing_args(ap):

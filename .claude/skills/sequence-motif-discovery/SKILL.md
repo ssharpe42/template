@@ -83,6 +83,12 @@ Phase 2. Exception: if sequences are long/dense and mining is slow, a loose
 `--max-time-gap` (e.g. a few days) both speeds it up and denoises candidates.
 Tune `--min-pos-support` from the profile: rare-event data may need 0.02, dense data 0.10.
 
+Mining and verification use **all CPU cores by default** (`--jobs`: 0 = all cores of
+whatever machine runs them, 1 = serial; results are identical either way). For very
+long histories (10k+ events/account) the matcher is index-based and stays fast, but the
+big levers are still `--recent-seconds` preprocessing and a mining-time
+`--max-time-gap` — see `references/design.md` § Scaling notes before anything else.
+
 ## Phase 2 — LLM reasoning loop (your job)
 
 Iterate 2–4 rounds. Each round:

@@ -14,8 +14,10 @@ from __future__ import annotations
 import argparse
 import json
 
-from seqlib import (add_windowing_args, bh_fdr, contrast_stats, load_dataset,
-                    pattern_matches, stratified_split, windowing_kwargs)
+from seqlib import (add_jobs_arg, add_windowing_args, bh_fdr, chunk_bounds,
+                    contrast_stats, load_dataset, parallel_env,
+                    pattern_matches, resolve_jobs, run_parallel,
+                    stratified_split, windowing_kwargs)
 
 
 def as_dsl(p, i):
@@ -29,13 +31,26 @@ def as_dsl(p, i):
     return out
 
 
-def evaluate(ds, idxs, patterns, pos_label):
+def _match_chunk(chunk):
+    """Worker: evaluate every pattern against a chunk of account indices."""
+    env = parallel_env()
+    ds, patterns = env["ds"], env["patterns"]
+    return [[i for i in chunk if pattern_matches(ds.seqs[i], pat, ds.times[i])]
+            for pat in patterns]
+
+
+def evaluate(ds, idxs, patterns, pos_label, jobs=0):
     n_pos = sum(1 for i in idxs if ds.labels[i] == pos_label)
     n_neg = len(idxs) - n_pos
+    chunks = [idxs[lo:hi]
+              for lo, hi in chunk_bounds(len(idxs), resolve_jobs(jobs) * 8)]
+    per_pattern = [[] for _ in patterns]
+    for part in run_parallel(_match_chunk, chunks, jobs,
+                             {"ds": ds, "patterns": patterns}):
+        for k, hits in enumerate(part):
+            per_pattern[k].extend(hits)
     out = []
-    for pat in patterns:
-        matched = [i for i in idxs
-                   if pattern_matches(ds.seqs[i], pat, ds.times[i])]
+    for pat, matched in zip(patterns, per_pattern):
         a = sum(1 for i in matched if ds.labels[i] == pos_label)
         st = contrast_stats(a, n_pos, len(matched) - a, n_neg)
         out.append((pat, st, set(matched)))
@@ -73,6 +88,7 @@ def main():
     ap.add_argument("--show-matches", type=int, default=0,
                     help="print N matching + N non-matching pos-class ids per pattern")
     ap.add_argument("--out", default=None)
+    add_jobs_arg(ap)
     add_windowing_args(ap)
     args = ap.parse_args()
 
@@ -90,7 +106,8 @@ def main():
     splits = [("holdout", test)] if args.holdout_only else (
         [("train", train)] + ([("holdout", test)] if test else []))
     for name, idxs in splits:
-        rows, n_pos, n_neg = evaluate(ds, idxs, patterns, args.pos_label)
+        rows, n_pos, n_neg = evaluate(ds, idxs, patterns, args.pos_label,
+                                      jobs=args.jobs)
         print_table(name.upper(), rows, n_pos, n_neg)
         results[name] = rows
 
