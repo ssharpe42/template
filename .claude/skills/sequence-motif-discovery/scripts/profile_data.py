@@ -10,7 +10,8 @@ from __future__ import annotations
 import argparse
 from collections import Counter
 
-from seqlib import contrast_stats, load_dataset, token_feature
+from seqlib import (add_windowing_args, contrast_stats, humanize_seconds,
+                    load_dataset, token_feature, windowing_kwargs)
 
 
 def pct(xs, q):
@@ -24,9 +25,10 @@ def main():
     ap.add_argument("--pos-label", required=True)
     ap.add_argument("--sep", default="=")
     ap.add_argument("--samples", type=int, default=3)
+    add_windowing_args(ap)
     args = ap.parse_args()
 
-    ds = load_dataset(args.data)
+    ds = load_dataset(args.data, **windowing_kwargs(args))
     labels = set(ds.labels)
     print(f"# Dataset profile: {args.data}\n")
     print(f"- accounts: {len(ds)}; labels: "
@@ -43,6 +45,23 @@ def main():
         ls = [len(s) for s, l in zip(ds.seqs, ds.labels) if l == lab]
         print(f"- {lab}: min={min(ls)} p50={pct(ls, .5)} p90={pct(ls, .9)} "
               f"max={max(ls)} mean={sum(ls)/len(ls):.1f}")
+
+    if ds.has_times:
+        print("\n## Inter-event time gaps (informs gap buckets D5 / time windows)")
+        for lab in sorted(labels):
+            gaps = [t2 - t1
+                    for ts, l in zip(ds.times, ds.labels) if l == lab and ts
+                    for t1, t2 in zip(ts, ts[1:])]
+            if gaps:
+                print(f"- {lab}: p10={humanize_seconds(pct(gaps, .1))} "
+                      f"p50={humanize_seconds(pct(gaps, .5))} "
+                      f"p90={humanize_seconds(pct(gaps, .9))}")
+        spans = [ts[-1] - ts[0] for ts in ds.times if ts and len(ts) > 1]
+        if spans:
+            print(f"- history span: p50={humanize_seconds(pct(spans, .5))} "
+                  f"p90={humanize_seconds(pct(spans, .9))}")
+    else:
+        print("\n(no event times found — time-based options D5 unavailable)")
 
     # vocabulary & features
     tok_pos, tok_neg = Counter(), Counter()  # account-level presence

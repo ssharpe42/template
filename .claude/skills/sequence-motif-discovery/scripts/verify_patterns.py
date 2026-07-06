@@ -14,15 +14,19 @@ from __future__ import annotations
 import argparse
 import json
 
-from seqlib import bh_fdr, contrast_stats, load_dataset, pattern_matches, stratified_split
+from seqlib import (add_windowing_args, bh_fdr, contrast_stats, load_dataset,
+                    pattern_matches, stratified_split, windowing_kwargs)
 
 
 def as_dsl(p, i):
     if "steps" in p:
         return p
-    return {"id": p.get("id", f"M{i:03d}"),
-            "name": " → ".join(p["pattern"]),
-            "steps": [{"token": t} for t in p["pattern"]]}
+    out = {"id": p.get("id", f"M{i:03d}"),
+           "name": " → ".join(p["pattern"]),
+           "steps": [{"token": t} for t in p["pattern"]]}
+    if p.get("constraints"):
+        out["constraints"] = p["constraints"]
+    return out
 
 
 def evaluate(ds, idxs, patterns, pos_label):
@@ -30,7 +34,8 @@ def evaluate(ds, idxs, patterns, pos_label):
     n_neg = len(idxs) - n_pos
     out = []
     for pat in patterns:
-        matched = [i for i in idxs if pattern_matches(ds.seqs[i], pat)]
+        matched = [i for i in idxs
+                   if pattern_matches(ds.seqs[i], pat, ds.times[i])]
         a = sum(1 for i in matched if ds.labels[i] == pos_label)
         st = contrast_stats(a, n_pos, len(matched) - a, n_neg)
         out.append((pat, st, set(matched)))
@@ -68,9 +73,11 @@ def main():
     ap.add_argument("--show-matches", type=int, default=0,
                     help="print N matching + N non-matching pos-class ids per pattern")
     ap.add_argument("--out", default=None)
+    add_windowing_args(ap)
     args = ap.parse_args()
 
-    ds = load_dataset(args.data, exclude_tokens=args.exclude_tokens)
+    ds = load_dataset(args.data, exclude_tokens=args.exclude_tokens,
+                      **windowing_kwargs(args))
     with open(args.patterns) as f:
         patterns = [as_dsl(p, i) for i, p in enumerate(json.load(f))]
 

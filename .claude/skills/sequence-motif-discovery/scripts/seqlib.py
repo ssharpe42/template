@@ -1,9 +1,12 @@
 """Shared helpers: data loading, pattern matching, and contrast statistics.
 
 Data format (JSONL, one account per line):
-    {"id": "a1", "label": "fraud", "events": ["device=new", ["txn=high", "geo=us"]]}
+    {"id": "a1", "label": "fraud", "events": ["device=new", ["txn=high", "geo=us"]],
+     "times": [1710000000, 1710000345]}
 Each event is a token string or a list of token strings (itemset event).
-Long CSV is also accepted: columns id,label,order,token (header required).
+"times" is optional: epoch seconds (numbers) or ISO-8601 strings, one per event.
+Long CSV is also accepted: columns id,label,order,token with optional time column
+(epoch seconds or ISO-8601); order breaks ties / substitutes when time is absent.
 """
 
 from __future__ import annotations
@@ -13,6 +16,7 @@ import json
 import math
 import random
 from dataclasses import dataclass, field
+from datetime import datetime
 
 
 @dataclass
@@ -21,9 +25,23 @@ class Dataset:
     labels: list = field(default_factory=list)
     # seqs[i] = list of frozenset(tokens)
     seqs: list = field(default_factory=list)
+    # times[i] = list of epoch-second floats aligned with seqs[i], or None
+    times: list = field(default_factory=list)
 
     def __len__(self):
         return len(self.ids)
+
+    @property
+    def has_times(self):
+        return any(t is not None for t in self.times)
+
+
+def parse_time(v):
+    if v is None:
+        return None
+    if isinstance(v, (int, float)):
+        return float(v)
+    return datetime.fromisoformat(str(v)).timestamp()
 
 
 def _norm_event(ev):
@@ -32,21 +50,79 @@ def _norm_event(ev):
     return frozenset(str(t) for t in ev)
 
 
-def load_dataset(path, exclude_tokens=()):
+def humanize_seconds(s):
+    for div, unit in ((86400, "d"), (3600, "h"), (60, "m")):
+        if s >= div:
+            return f"{s / div:g}{unit}"
+    return f"{s:g}s"
+
+
+def add_gap_tokens(seq, times, edges):
+    """Merge a gap=<bucket> token into each event (after the first) describing the
+    time since the previous event. edges: ascending seconds, e.g. [60, 3600, 86400]
+    -> gap=lt_1m / gap=lt_1h / gap=lt_1d / gap=ge_1d."""
+    out = [seq[0]]
+    for i in range(1, len(seq)):
+        delta = times[i] - times[i - 1]
+        tok = f"gap=ge_{humanize_seconds(edges[-1])}"
+        for e in edges:
+            if delta < e:
+                tok = f"gap=lt_{humanize_seconds(e)}"
+                break
+        out.append(seq[i] | {tok})
+    return out
+
+
+def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=None,
+                 gap_buckets=None):
+    """Load and optionally window each sequence to its recent tail.
+
+    recent_seconds: keep only events within this many seconds of the account's
+        last event (requires times). recent_events: keep only the last N events.
+    Both cut mining/matching cost roughly linearly in what they discard.
+    gap_buckets: ascending seconds edges; adds gap=... tokens (requires times).
+    """
     excl = set(exclude_tokens)
     ds = Dataset()
+
+    def add(aid, label, events, times):
+        if times is not None and len(times) == len(events):
+            order = sorted(range(len(events)), key=lambda i: times[i])
+            events = [events[i] for i in order]
+            times = [times[i] for i in order]
+        else:
+            times = None
+        if recent_seconds is not None and times:
+            cut = times[-1] - recent_seconds
+            k = next((i for i, t in enumerate(times) if t >= cut), len(times) - 1)
+            events, times = events[k:], times[k:]
+        if recent_events is not None:
+            events = events[-recent_events:]
+            times = times[-recent_events:] if times else None
+        if gap_buckets and times and len(events) > 1:
+            events = add_gap_tokens(events, times, gap_buckets)
+        if excl:
+            keep = [i for i, e in enumerate(events) if e - excl]
+            events = [events[i] - excl for i in keep]
+            times = [times[i] for i in keep] if times else None
+        ds.ids.append(str(aid))
+        ds.labels.append(str(label))
+        ds.seqs.append(events)
+        ds.times.append(times)
+
     if path.endswith(".csv"):
         rows = {}
         with open(path, newline="") as f:
             for r in csv.DictReader(f):
+                key = (float(r["order"]), parse_time(r.get("time")) or 0.0)
                 rows.setdefault(r["id"], (r["label"], []))[1].append(
-                    (float(r["order"]), r["token"])
+                    (key, frozenset([r["token"]]), parse_time(r.get("time")))
                 )
         for aid, (label, evs) in rows.items():
             evs.sort(key=lambda x: x[0])
-            ds.ids.append(aid)
-            ds.labels.append(label)
-            ds.seqs.append([frozenset([t]) - excl or frozenset() for _, t in evs])
+            times = [t for _, _, t in evs]
+            add(aid, label, [e for _, e, _ in evs],
+                times if all(t is not None for t in times) else None)
     else:
         with open(path) as f:
             for line in f:
@@ -54,11 +130,9 @@ def load_dataset(path, exclude_tokens=()):
                 if not line:
                     continue
                 rec = json.loads(line)
-                ds.ids.append(str(rec["id"]))
-                ds.labels.append(str(rec["label"]))
-                ds.seqs.append([_norm_event(e) - excl for e in rec["events"]])
-    if excl:
-        ds.seqs = [[e for e in seq if e] for seq in ds.seqs]
+                times = rec.get("times")
+                add(rec["id"], rec["label"], [_norm_event(e) for e in rec["events"]],
+                    [parse_time(t) for t in times] if times else None)
     return ds
 
 
@@ -100,75 +174,68 @@ def pred_match(event, pred, sep="="):
 
 # ------------------------------------------------------------------ matching
 
-def _find_from(seq, steps, si, pos, first_pos, max_gap, window):
-    """Backtracking search for steps[si:] with steps[si] at index >= pos."""
+def _step_ok(seq, times, cons, i, prev, first):
+    """Constraint checks for matching steps[si] at index i (prev/first = indices
+    of previous/first matched step, or None). Returns 'stop' when no later i can
+    satisfy either (positions and times are both increasing)."""
+    if prev is not None:
+        mg = cons.get("max_gap")
+        if mg is not None and i - prev - 1 > mg:
+            return "stop"
+        mtg = cons.get("max_time_gap")
+        if mtg is not None and times and times[i] - times[prev] > mtg:
+            return "stop"
+    if first is not None:
+        w = cons.get("window")
+        if w is not None and i - first + 1 > w:
+            return "stop"
+        tw = cons.get("time_window")
+        if tw is not None and times and times[i] - times[first] > tw:
+            return "stop"
+    return "ok"
+
+
+def _find_from(seq, times, steps, cons, si, prev, first):
+    """Backtracking search; returns matched index of the last step, or None."""
     if si == len(steps):
-        return True
-    lo = pos
-    hi = len(seq) if (max_gap is None or si == 0) else min(len(seq), pos + max_gap + 1)
-    for i in range(lo, hi):
+        return prev
+    for i in range((prev + 1) if prev is not None else 0, len(seq)):
+        if _step_ok(seq, times, cons, i, prev, first) == "stop":
+            break
         if not pred_match(seq[i], steps[si]):
             continue
-        fp = i if si == 0 else first_pos
-        if window is not None and i - fp + 1 > window:
-            break
-        if _find_from(seq, steps, si + 1, i + 1, fp, max_gap, window):
-            return True
-    return False
-
-
-def _match_once(seq, steps, max_gap, window, scope, win):
-    if scope == "prefix" and win is not None:
-        seq = seq[:win]
-    elif scope == "suffix" and win is not None:
-        seq = seq[-win:]
-    return _find_from(seq, steps, 0, 0, 0, max_gap, window)
-
-
-def _count_matches(seq, steps, max_gap, window):
-    """Greedy count of non-overlapping matches (left to right)."""
-    count, start = 0, 0
-    while start < len(seq):
-        end = _match_end(seq, steps, 0, start, 0, max_gap, window)
-        if end is None:
-            break
-        count += 1
-        start = end + 1
-    return count
-
-
-def _match_end(seq, steps, si, pos, first_pos, max_gap, window):
-    if si == len(steps):
-        return first_pos - 1  # caller adds nothing; overwritten below
-    lo = pos
-    hi = len(seq) if (max_gap is None or si == 0) else min(len(seq), pos + max_gap + 1)
-    for i in range(lo, hi):
-        if not pred_match(seq[i], steps[si]):
-            continue
-        fp = i if si == 0 else first_pos
-        if window is not None and i - fp + 1 > window:
-            break
-        if si == len(steps) - 1:
-            return i
-        sub = _match_end(seq, steps, si + 1, i + 1, fp, max_gap, window)
-        if sub is not None:
-            return sub
+        end = _find_from(seq, times, steps, cons, si + 1, i,
+                         first if first is not None else i)
+        if end is not None:
+            return end
     return None
 
 
-def pattern_matches(seq, pattern):
+def pattern_matches(seq, pattern, times=None):
     cons = pattern.get("constraints", {}) or {}
-    max_gap = cons.get("max_gap")
-    window = cons.get("window")
-    scope = cons.get("scope", "anywhere")
     steps = pattern["steps"]
     for pred in pattern.get("absent", []) or []:
         if any(pred_match(ev, pred) for ev in seq):
             return False
-    min_count = pattern.get("min_count", 1)
-    if min_count <= 1:
-        return _match_once(seq, steps, max_gap, window, scope, window)
-    return _count_matches(seq, steps, max_gap, window) >= min_count
+    scope = cons.get("scope", "anywhere")
+    win = cons.get("window")
+    if scope == "prefix" and win is not None:
+        seq, times = seq[:win], times[:win] if times else None
+    elif scope == "suffix" and win is not None:
+        seq, times = seq[-win:], times[-win:] if times else None
+
+    need = pattern.get("min_count", 1)
+    start, found = 0, 0
+    while start < len(seq):
+        sub_t = times[start:] if times else None
+        end = _find_from(seq[start:], sub_t, steps, cons, 0, None, None)
+        if end is None:
+            return False
+        found += 1
+        if found >= need:
+            return True
+        start += end + 1
+    return False
 
 
 # ---------------------------------------------------------------- statistics
@@ -238,3 +305,24 @@ def is_subsequence(small, big):
     """True if token-list `small` is a subsequence of token-list `big`."""
     it = iter(big)
     return all(tok in it for tok in small)
+
+
+def add_windowing_args(ap):
+    """Shared CLI flags for time-aware preprocessing (all scripts)."""
+    ap.add_argument("--recent-seconds", type=float, default=None,
+                    help="keep only events within T seconds of each account's "
+                         "last event (needs times; cuts compute)")
+    ap.add_argument("--recent-events", type=int, default=None,
+                    help="keep only each account's last N events")
+    ap.add_argument("--gap-buckets", default=None,
+                    help="comma-separated ascending seconds edges, e.g. "
+                         "'60,3600,86400': adds gap=lt_1m/... tokens (needs times)")
+
+
+def windowing_kwargs(args):
+    return {
+        "recent_seconds": args.recent_seconds,
+        "recent_events": args.recent_events,
+        "gap_buckets": ([float(x) for x in args.gap_buckets.split(",")]
+                        if args.gap_buckets else None),
+    }

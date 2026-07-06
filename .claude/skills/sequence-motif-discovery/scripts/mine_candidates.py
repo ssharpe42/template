@@ -14,14 +14,16 @@ import math
 import sys
 from collections import defaultdict
 
-from seqlib import bh_fdr, contrast_stats, is_subsequence, load_dataset, stratified_split
+from seqlib import (add_windowing_args, bh_fdr, contrast_stats, is_subsequence,
+                    load_dataset, stratified_split, windowing_kwargs)
 
 
-def mine(seqs, is_pos, min_pos, max_len, max_gap, max_patterns):
+def mine(seqs, times, is_pos, min_pos, max_len, max_gap, max_time_gap, max_patterns):
     """PrefixSpan with per-class support. Projections carry all valid end
-    positions when max_gap is set (needed for correctness); only the earliest
-    otherwise (sufficient for unconstrained gaps)."""
+    positions when a gap constraint is set (needed for correctness); only the
+    earliest otherwise (sufficient for unconstrained gaps)."""
     n_pos = sum(is_pos)
+    constrained = max_gap is not None or max_time_gap is not None
     results = []
 
     def extend(prefix, proj):
@@ -29,7 +31,7 @@ def mine(seqs, is_pos, min_pos, max_len, max_gap, max_patterns):
             return
         occ = defaultdict(dict)  # token -> {sid: [positions]}
         for sid, ends in proj:
-            seq = seqs[sid]
+            seq, ts = seqs[sid], times[sid]
             found = {}
             if ends is None:
                 span = range(len(seq))
@@ -37,13 +39,17 @@ def mine(seqs, is_pos, min_pos, max_len, max_gap, max_patterns):
                 idxs = set()
                 for p in ends:
                     hi = len(seq) if max_gap is None else min(len(seq), p + max_gap + 2)
-                    idxs.update(range(p + 1, hi))
+                    for i in range(p + 1, hi):
+                        if (max_time_gap is not None and ts
+                                and ts[i] - ts[p] > max_time_gap):
+                            break
+                        idxs.add(i)
                 span = sorted(idxs)
             for i in span:
                 for tok in seqs[sid][i]:
                     found.setdefault(tok, []).append(i)
             for tok, positions in found.items():
-                occ[tok][sid] = positions if max_gap is not None else positions[:1]
+                occ[tok][sid] = positions if constrained else positions[:1]
 
         for tok, bysid in occ.items():
             a = sum(1 for sid in bysid if is_pos[sid])
@@ -82,7 +88,10 @@ def main():
                     help="mine patterns enriched in pos, in neg, or both")
     ap.add_argument("--min-pos-support", type=float, default=0.05)
     ap.add_argument("--max-len", type=int, default=4)
-    ap.add_argument("--max-gap", type=int, default=None)
+    ap.add_argument("--max-gap", type=int, default=None,
+                    help="max intervening events between consecutive steps")
+    ap.add_argument("--max-time-gap", type=float, default=None,
+                    help="max seconds between consecutive steps (needs times)")
     ap.add_argument("--top", type=int, default=50)
     ap.add_argument("--metric", default="wracc",
                     choices=["wracc", "lift", "odds_ratio", "info_gain", "precision"])
@@ -92,13 +101,18 @@ def main():
                     help="holdout fraction to EXCLUDE from mining (stratified)")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=None)
+    add_windowing_args(ap)
     args = ap.parse_args()
 
-    ds = load_dataset(args.data, exclude_tokens=args.exclude_tokens)
+    ds = load_dataset(args.data, exclude_tokens=args.exclude_tokens,
+                      **windowing_kwargs(args))
+    if args.max_time_gap is not None and not ds.has_times:
+        ap.error("--max-time-gap requires event times in the data")
     idx = list(range(len(ds)))
     if args.split:
         idx, _ = stratified_split(ds, args.split, args.seed)
     seqs = [ds.seqs[i] for i in idx]
+    times = [ds.times[i] for i in idx]
     labels = [ds.labels[i] for i in idx]
 
     directions = ["pos", "neg"] if args.direction == "both" else [args.direction]
@@ -109,15 +123,24 @@ def main():
                   else [l != args.pos_label for l in labels])
         n_pos_total = sum(is_pos)
         min_pos = max(2, math.ceil(args.min_pos_support * n_pos_total))
-        rows, n_pos, n_neg = mine(seqs, is_pos, min_pos, args.max_len,
-                                  args.max_gap, args.max_patterns)
+        rows, n_pos, n_neg = mine(seqs, times, is_pos, min_pos, args.max_len,
+                                  args.max_gap, args.max_time_gap,
+                                  args.max_patterns)
         rows = closed_filter(rows)
+        mined_cons = {}
+        if args.max_gap is not None:
+            mined_cons["max_gap"] = args.max_gap
+        if args.max_time_gap is not None:
+            mined_cons["max_time_gap"] = args.max_time_gap
         scored = []
         for pat, a, c in rows:
             st = contrast_stats(a, n_pos, c, n_neg)
             if st["lift"] <= 1.0:
                 continue
-            scored.append({"pattern": pat, "direction": direction, **st})
+            rec = {"pattern": pat, "direction": direction, **st}
+            if mined_cons:
+                rec["constraints"] = mined_cons
+            scored.append(rec)
         scored.sort(key=lambda r: r[args.metric], reverse=True)
         scored = scored[: args.top]
         qs = bh_fdr([r["fisher_p"] for r in scored]) if scored else []

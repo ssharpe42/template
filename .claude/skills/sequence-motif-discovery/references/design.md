@@ -148,11 +148,23 @@ Profile flags suspects; the user confirms.
   - Heavy imbalance (>50:1): consider downsampling negatives for *mining speed only* —
     verification always runs on the full data.
 
-**D5. Timestamps / inter-event gaps.** If present:
-  - (a) Discretize gaps into tokens (`gap=minutes|hours|days`) so "velocity" motifs are
-    minable — often the single best move for fraud.
-  - (b) Use event-count `max_gap`/`window` constraints only (no data change).
-  - (c) Ignore time. Pick after seeing whether gap distributions differ by class.
+**D5. Timestamps / inter-event gaps.** All supported natively when the data carries
+`times`; the profile prints per-class gap distributions to choose among:
+  - (a) Discretize gaps into tokens (`--gap-buckets "60,3600,86400"` → `gap=lt_1m`…)
+    so "velocity" motifs become *minable* — often the single best move for fraud.
+  - (b) Time constraints on patterns: `max_time_gap`/`time_window` in the DSL, and
+    `--max-time-gap` during mining ("A then B within an hour").
+  - (c) Event-count `max_gap`/`window` only (no data change).
+  - (d) Ignore time. Pick after seeing whether gap distributions differ by class.
+  (a) and (b) compose: mine with gap tokens, tighten with time windows.
+
+**D5b. Recency windowing for scope + compute.** If full histories are long, restrict to
+each account's recent tail with `--recent-seconds` (e.g. last 30/60/90 days) or
+`--recent-events N` — supported by all three scripts. Cost of mining and matching drops
+roughly linearly with discarded events, and recent behavior is usually where the fraud
+signal lives. Compare a windowed vs full-history profile before committing; beware
+interaction with D2 (if fraud histories end at detection, "recent tail" means different
+things per class).
 
 **D6. Vocabulary size & bin quality.** Vocab > ~5k tokens or features with >20 bins →
 mining drowns.
@@ -167,7 +179,9 @@ patterns matter most. Ask the user.
 ## Scaling notes
 
 The bundled miner is pure-stdlib Python and comfortable to ~100k sequences × ~100 events.
-Beyond that: sample for mining (stratified, verify on full), or swap Phase 1 for SPMF
+First lever when it's slow: shrink sequences with `--recent-seconds`/`--recent-events`
+(D5b) and/or constrain mining with `--max-gap`/`--max-time-gap`, which prunes projections
+hard. Beyond that: sample for mining (stratified, verify on full), or swap Phase 1 for SPMF
 (Java, has CM-SPADE/BIDE/contrast miners) keeping the same DSL/verifier. The verifier is
 linear in (patterns × events) and rarely the bottleneck.
 

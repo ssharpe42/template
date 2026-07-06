@@ -35,12 +35,19 @@ def base_seq(rng, lo=15, hi=60):
     return [noise_event(rng) for _ in range(rng.randint(lo, hi))]
 
 
-def inject(seq, rng, motif, max_gap=4):
+def inject(seq, gaps, rng, motif, max_gap=4, burst_secs=(30, 300)):
+    """Overwrite events with the motif tokens; compress the time gaps between
+    consecutive motif events so it also reads as a burst in time."""
     pos = rng.randint(0, max(0, len(seq) - len(motif) * (max_gap + 1) - 1))
+    prev = None
     for tok in motif:
         pos += rng.randint(1, max_gap)
         pos = min(pos, len(seq) - 1)
         seq[pos] = tok
+        if prev is not None:
+            for j in range(prev + 1, pos + 1):
+                gaps[j] = rng.uniform(*burst_secs) / max(1, pos - prev)
+        prev = pos
     return seq
 
 
@@ -53,20 +60,33 @@ def main():
     args = ap.parse_args()
 
     rng = random.Random(args.seed)
+    t0 = 1750000000.0
+
+    def times_from(gaps):
+        ts, t = [], t0
+        for g in gaps:
+            t += g
+            ts.append(round(t, 1))
+        return ts
+
     recs = []
     for i in range(args.n_fraud):
         seq = base_seq(rng)
+        gaps = [rng.uniform(3600, 48 * 3600) for _ in seq]  # noise: 1h-2d apart
         if rng.random() < 0.7:
             amt = rng.choice(["high", "very_high"])
-            inject(seq, rng, ["device=new", f"txn_amt={amt}", "pwd_reset=1"])
+            inject(seq, gaps, rng, ["device=new", f"txn_amt={amt}", "pwd_reset=1"])
         if rng.random() < 0.4:
-            inject(seq, rng, ["login_geo=mismatch"] * 3, max_gap=2)
-        recs.append({"id": f"f{i:04d}", "label": "fraud", "events": seq})
+            inject(seq, gaps, rng, ["login_geo=mismatch"] * 3, max_gap=2)
+        recs.append({"id": f"f{i:04d}", "label": "fraud", "events": seq,
+                     "times": times_from(gaps)})
     for i in range(args.n_good):
         seq = base_seq(rng)
+        gaps = [rng.uniform(3600, 48 * 3600) for _ in seq]
         if rng.random() < 0.6:
             seq[rng.randint(0, min(5, len(seq) - 1))] = "kyc=passed"
-        recs.append({"id": f"g{i:04d}", "label": "good", "events": seq})
+        recs.append({"id": f"g{i:04d}", "label": "good", "events": seq,
+                     "times": times_from(gaps)})
     rng.shuffle(recs)
     with open(args.out, "w") as f:
         for r in recs:

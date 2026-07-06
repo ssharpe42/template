@@ -12,7 +12,7 @@ Design goal: everything expressible here is trivially portable to a rule engine.
     {"any_of": ["txn_amt=high", "txn_amt=very_high"]},
     {"feature": "login_geo", "values": ["mismatch", "new_country"]}
   ],
-  "constraints": {"max_gap": 3, "window": 10, "scope": "anywhere"},
+  "constraints": {"max_gap": 3, "window": 10, "max_time_gap": 3600, "scope": "anywhere"},
   "absent": [{"token": "kyc=passed"}],
   "min_count": 1
 }
@@ -30,6 +30,9 @@ Design goal: everything expressible here is trivially portable to a rule engine.
   - `max_gap`: max number of *intervening* events between consecutive matched steps
     (0 = strictly adjacent). Omit for unlimited.
   - `window`: max span in events from first to last matched step (inclusive).
+  - `max_time_gap`: max **seconds** between consecutive matched steps (requires event
+    times in the data; ignored when an account has no times).
+  - `time_window`: max seconds from first to last matched step.
   - `scope`: `"anywhere"` (default), `"prefix"` (match must start in first `window`
     events), `"suffix"` (must end in last `window` events; requires `window`).
 - **absent**: list of predicates (same forms as steps); the pattern only matches if NO
@@ -56,7 +59,10 @@ AND  NEVER event(kyc=passed)            -- over account history
 ## Authoring guidance for the LLM
 
 - Prefer `any_of`/`values` over separate near-duplicate patterns.
-- Add `max_gap`/`window` only when verification shows it *raises precision*; unconstrained
-  patterns are easier to deploy.
+- Add `max_gap`/`window` (or their time variants) only when verification shows it
+  *raises precision*; unconstrained patterns are easier to deploy.
+- When event times exist, prefer `max_time_gap`/`time_window` over event-count gaps —
+  "within 10 minutes" is more meaningful to analysts and rule engines than "within 3
+  events", and burstiness is usually the real fraud signal.
 - An `absent` clause on a whole history is expensive in some engines — mention that in
   the rule card when used.

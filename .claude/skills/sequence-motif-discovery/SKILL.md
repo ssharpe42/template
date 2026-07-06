@@ -36,8 +36,10 @@ Pattern language spec: `references/pattern-dsl.md`.
 ## Phase 0 — Intake and data audit (do this before any mining)
 
 Convert the user's data to the canonical JSONL format (one line per account):
-`{"id": "...", "label": "fraud", "events": ["feat=val", ...]}` — an event may also be a
-list of tokens if multiple features fire per event. Then run:
+`{"id": "...", "label": "fraud", "events": ["feat=val", ...], "times": [...]}` — an
+event may also be a list of tokens if multiple features fire per event; `times` is
+optional (epoch seconds or ISO-8601, one per event) and unlocks time-based constraints,
+gap tokens, and recency windowing. Then run:
 
 ```bash
 python scripts/profile_data.py data.jsonl --pos-label fraud
@@ -45,7 +47,10 @@ python scripts/profile_data.py data.jsonl --pos-label fraud
 
 Read the profile and **stop to resolve the decision points in
 `references/design.md` § "Decisions that require looking at the data"** (event granularity,
-anchoring/truncation, leakage tokens, imbalance, vocabulary size, timestamps). Ask the
+anchoring/truncation, leakage tokens, imbalance, vocabulary size, timestamps). If times
+exist and histories are long, decide the recency window here (`--recent-seconds` /
+`--recent-events`, D5b) and gap-token buckets (`--gap-buckets`, informed by the profile's
+per-class gap distributions) — use the SAME flags on every subsequent script call. Ask the
 user only where the data itself doesn't answer the question. Read 5–10 raw sequences per
 class yourself to build intuition — but only for hypothesis generation, never for stats.
 
@@ -61,7 +66,9 @@ python scripts/mine_candidates.py data.jsonl --pos-label fraud --direction both 
 
 This runs class-aware PrefixSpan and scores every frequent subsequence with WRAcc, lift,
 odds ratio, information gain and Fisher exact p (see `references/design.md` § Metrics).
-Start with `--max-gap` unset (unconstrained order); you'll tighten gaps in Phase 2.
+Start with `--max-gap`/`--max-time-gap` unset (unconstrained order); you'll tighten in
+Phase 2. Exception: if sequences are long/dense and mining is slow, a loose
+`--max-time-gap` (e.g. a few days) both speeds it up and denoises candidates.
 Tune `--min-pos-support` from the profile: rare-event data may need 0.02, dense data 0.10.
 
 ## Phase 2 — LLM reasoning loop (your job)
@@ -74,7 +81,8 @@ Iterate 2–4 rounds. Each round:
    that work:
    - **Generalize values**: merge adjacent bins (`amt=high`,`amt=very_high` → `any_of`),
      or wildcard the value (`{"feature": "device_change"}`).
-   - **Tighten**: add `max_gap` / `window` to require the motif happens in a burst.
+   - **Tighten**: add `max_gap`/`window` — or with times, `max_time_gap`/`time_window`
+     ("within 10 minutes") — to require the motif happens in a burst.
    - **Negate**: add `absent` tokens (e.g. fraud motif *without* `kyc=passed`).
    - **Semantics**: use domain reasoning about what the tokens *mean* to propose motifs
      mining missed (e.g. "escalating amounts" as a chain of increasing bins).
