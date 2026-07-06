@@ -81,6 +81,9 @@ Iterate 2–4 rounds. Each round:
    that work:
    - **Generalize values**: merge adjacent bins (`amt=high`,`amt=very_high` → `any_of`),
      or wildcard the value (`{"feature": "device_change"}`).
+   - **Conjoin within events** (itemset data): mined steps are single tokens; use
+     `all_of` to require tokens in the SAME event (`[EVT:txn]` + `amt=high`). Seed
+     these from the profiler's `--event-pairs` table.
    - **Tighten**: add `max_gap`/`window` — or with times, `max_time_gap`/`time_window`
      ("within 10 minutes") — to require the motif happens in a burst.
    - **Negate**: add `absent` tokens (e.g. fraud motif *without* `kyc=passed`).

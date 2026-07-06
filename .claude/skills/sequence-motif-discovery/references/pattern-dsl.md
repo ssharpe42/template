@@ -24,8 +24,16 @@ Design goal: everything expressible here is trivially portable to a rule engine.
   predicate evaluated against a single event (an event = set of tokens):
   - `{"token": T}` — event contains exactly token T.
   - `{"any_of": [T1, T2]}` — event contains any listed token.
+  - `{"all_of": [p1, p2, ...]}` — event satisfies ALL sub-predicates (conjunction over
+    the SAME itemset event; sub-predicates are any form here, bare token strings OK).
+    This is how "a transaction event with a high amount on a new device" is written for
+    multi-token events: `{"all_of": ["[EVT:txn]", "txn_amt=high", "device=new"]}`.
   - `{"feature": F}` — event contains any token of feature F (value wildcard).
   - `{"feature": F, "values": [v1, v2]}` — event contains `F=v1` or `F=v2`.
+
+Token parsing: `feat=val` splits on `=`; bracketed type tokens `[EVT:xxx]` parse as
+feature `EVT`, value `xxx` — so `{"feature": "EVT", "values": ["login", "txn"]}` anchors
+a step on event *type* regardless of its other feature tokens.
 - **constraints** (all optional):
   - `max_gap`: max number of *intervening* events between consecutive matched steps
     (0 = strictly adjacent). Omit for unlimited.

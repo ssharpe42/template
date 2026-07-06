@@ -25,6 +25,9 @@ def main():
     ap.add_argument("--pos-label", required=True)
     ap.add_argument("--sep", default="=")
     ap.add_argument("--samples", type=int, default=3)
+    ap.add_argument("--event-pairs", action="store_true",
+                    help="also rank within-event token pairs by contrast "
+                         "(candidates for all_of conjunctive steps; slower)")
     add_windowing_args(ap)
     args = ap.parse_args()
 
@@ -107,6 +110,31 @@ def main():
     for t, st in sorted(rows, key=lambda r: r[1]["wracc"])[:15]:
         print(f"| {t} | {st['support_pos']:.3f} | {st['support_neg']:.3f} "
               f"| {1/max(st['lift'], 1e-9):.2f} |")
+
+    if args.event_pairs:
+        from itertools import combinations
+        pair_pos, pair_neg = Counter(), Counter()
+        for seq, lab in zip(ds.seqs, ds.labels):
+            seen = set()
+            for ev in seq:
+                if len(ev) > 1:
+                    seen.update(combinations(sorted(ev), 2))
+            for pr in seen:
+                (pair_pos if lab == args.pos_label else pair_neg)[pr] += 1
+        prow = []
+        for pr in set(pair_pos) | set(pair_neg):
+            a, c = pair_pos.get(pr, 0), pair_neg.get(pr, 0)
+            if a + c < 3:
+                continue
+            prow.append((pr, contrast_stats(a, n_pos, c, n_neg)))
+        prow.sort(key=lambda r: r[1]["wracc"], reverse=True)
+        print(f"\n### Within-event token pairs enriched in {args.pos_label} "
+              "(all_of candidates)")
+        print("| pair | sup_pos | sup_neg | lift |")
+        print("|---|---|---|---|")
+        for pr, st in prow[:20]:
+            print(f"| {pr[0]} + {pr[1]} | {st['support_pos']:.3f} "
+                  f"| {st['support_neg']:.3f} | {st['lift']:.2f} |")
 
     leaks = [t for t, st in rows
              if st["lift"] > 50 and st["support_pos"] > 0.3]

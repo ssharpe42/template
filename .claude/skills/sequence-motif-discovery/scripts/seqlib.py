@@ -74,15 +74,21 @@ def add_gap_tokens(seq, times, edges):
 
 
 def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=None,
-                 gap_buckets=None):
+                 gap_buckets=None, random_cut_label=None, random_cut_seed=0):
     """Load and optionally window each sequence to its recent tail.
 
     recent_seconds: keep only events within this many seconds of the account's
         last event (requires times). recent_events: keep only the last N events.
     Both cut mining/matching cost roughly linearly in what they discard.
     gap_buckets: ascending seconds edges; adds gap=... tokens (requires times).
+    random_cut_label: truncate each account with this label at a uniformly random
+        cut point (a "random view"), mimicking the censoring of the other class
+        whose sequences end at a determined cutoff (e.g. fraud pre-truncated
+        before label leakage). One view per account keeps significance stats
+        valid; vary random_cut_seed across runs to check pattern stability.
     """
     excl = set(exclude_tokens)
+    cut_rng = random.Random(random_cut_seed)
     ds = Dataset()
 
     def add(aid, label, events, times):
@@ -92,6 +98,10 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
             times = [times[i] for i in order]
         else:
             times = None
+        if random_cut_label is not None and label == random_cut_label and len(events) > 1:
+            k = cut_rng.randint(1, len(events))
+            events = events[:k]
+            times = times[:k] if times else None
         if recent_seconds is not None and times:
             cut = times[-1] - recent_seconds
             k = next((i for i, t in enumerate(times) if t >= cut), len(times) - 1)
@@ -153,21 +163,36 @@ def stratified_split(ds, test_frac, seed):
 
 # ---------------------------------------------------------------- predicates
 
+def token_split(token, sep="="):
+    """(feature, value) for a token. Bracketed type tokens like '[EVT:login]'
+    parse as ('EVT', 'login'); plain tokens split on sep; else (token, token)."""
+    if token.startswith("[") and token.endswith("]") and ":" in token:
+        return tuple(token[1:-1].split(":", 1))
+    if sep in token:
+        return tuple(token.split(sep, 1))
+    return token, token
+
+
 def token_feature(token, sep="="):
-    return token.split(sep, 1)[0] if sep in token else token
+    return token_split(token, sep)[0]
 
 
 def pred_match(event, pred, sep="="):
+    if isinstance(pred, str):
+        pred = {"token": pred}
     if "token" in pred:
         return pred["token"] in event
     if "any_of" in pred:
         return any(t in event for t in pred["any_of"])
+    if "all_of" in pred:
+        # conjunction over the SAME event (itemset events)
+        return all(pred_match(event, p, sep) for p in pred["all_of"])
     if "feature" in pred:
         vals = pred.get("values")
         for tok in event:
-            if token_feature(tok, sep) == pred["feature"]:
-                if vals is None or tok.split(sep, 1)[-1] in vals:
-                    return True
+            f, v = token_split(tok, sep)
+            if f == pred["feature"] and (vals is None or v in vals):
+                return True
         return False
     raise ValueError(f"unknown predicate: {pred}")
 
@@ -317,6 +342,11 @@ def add_windowing_args(ap):
     ap.add_argument("--gap-buckets", default=None,
                     help="comma-separated ascending seconds edges, e.g. "
                          "'60,3600,86400': adds gap=lt_1m/... tokens (needs times)")
+    ap.add_argument("--random-cut-label", default=None,
+                    help="truncate accounts with this label at a random cut "
+                         "point (random view), e.g. 'good' — mimics fraud "
+                         "sequences pre-truncated at a leak cutoff (D2c)")
+    ap.add_argument("--random-cut-seed", type=int, default=0)
 
 
 def windowing_kwargs(args):
@@ -325,4 +355,6 @@ def windowing_kwargs(args):
         "recent_events": args.recent_events,
         "gap_buckets": ([float(x) for x in args.gap_buckets.split(",")]
                         if args.gap_buckets else None),
+        "random_cut_label": args.random_cut_label,
+        "random_cut_seed": args.random_cut_seed,
     }

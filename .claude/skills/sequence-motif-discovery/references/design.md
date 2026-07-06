@@ -124,10 +124,18 @@ possibly ask the user — before proceeding. Options listed roughly by preferenc
 
 **D1. Event granularity.** Is an event one token or a bundle of feature-tokens?
   - (a) If events are single tokens, use as-is.
-  - (b) If multiple features fire per event (e.g. a transaction has amount, geo, device),
-    keep them as **itemset events** (a DSL step matches any token *in* the event) —
-    supported natively.
-  - (c) Flatten to consecutive tokens only if the per-event feature order is meaningful,
+  - (b) If multiple features fire per event (e.g. an event carries `[EVT:type]` plus 3–5
+    feature tokens), keep them as **itemset events** — supported natively. A DSL step
+    matches one token in the event by default; use `all_of` for within-event
+    conjunctions ("txn event AND high amount") and `{"feature": "EVT", ...}` to anchor
+    on event type. Mining proposes single-token steps; conjunctive steps come from the
+    LLM loop, seeded by the profiler's `--event-pairs` within-event contrast table.
+  - (c) **Do NOT merge each event's tokens into one composite token** when the composite
+    vocabulary explodes (e.g. ~2k feature tokens → millions of event-level combinations):
+    nothing clears a support floor, and patterns can't generalize across events that
+    differ in one feature. Merged tokens are only viable when the composite vocab stays
+    in the low thousands.
+  - (d) Flatten to consecutive tokens only if the per-event feature order is meaningful,
     which it usually isn't.
 
 **D2. Anchoring & truncation.** Fraud sequences often end at detection; good sequences
@@ -135,7 +143,14 @@ are right-censored at extraction time. Compare length distributions per class in
 profile — a large gap means length itself leaks the label.
   - (a) Truncate both classes to the last N events before a *neutral* anchor.
   - (b) Time-window (last 30/60/90 days) if timestamps exist.
-  - (c) For good accounts, sample a random cut point to mimic censoring of fraud cases.
+  - (c) **Random views**: fraud sequences are pre-truncated at a determined cutoff
+    before label information leaks; each good account is truncated at a uniformly
+    random cut point so both classes look "cut mid-history". Built in:
+    `--random-cut-label good --random-cut-seed 0` (the fraud-side cutoff is applied
+    upstream by the user, who knows the leak time). Take ONE view per account per run —
+    multiple simultaneous views of the same account are not independent samples and
+    corrupt Fisher/FDR stats. Instead, re-run with several `--random-cut-seed` values
+    and keep patterns whose stats are stable across seeds.
   Ask the user how labels were assigned in time before choosing.
 
 **D3. Label leakage tokens.** Needs eyes on the vocabulary: any token that encodes the
