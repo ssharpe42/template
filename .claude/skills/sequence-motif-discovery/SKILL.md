@@ -35,11 +35,17 @@ Pattern language spec: `references/pattern-dsl.md`.
 
 ## Phase 0 — Intake and data audit (do this before any mining)
 
-Convert the user's data to the canonical JSONL format (one line per account):
-`{"id": "...", "label": "fraud", "events": ["feat=val", ...], "times": [...]}` — an
-event may also be a list of tokens if multiple features fire per event; `times` is
-optional (epoch seconds or ISO-8601, one per event) and unlocks time-based constraints,
-gap tokens, and recency windowing. Then run:
+The loader accepts JSONL (one line per account) in two equivalent shapes:
+`{"id": "...", "label": "fraud", "events": [...], "times": [...]}` or the native
+`{"account_id": ..., "label": "fraud", "event_tokens": [...], "event_times": [...]}`.
+An event may be a single token, a list of tokens (itemset event), or a composite
+string `"[EVT:type]---feat1:v1--feat2:v2"` (split on `---` after the event-type
+header, then `--` between features; token values must not contain `--`). Both
+`feat=val` and `feat:val` token styles parse. A `label` field is REQUIRED on every
+record; numeric labels are fine (0/1 → `--pos-label 1`, and e.g.
+`--random-cut-label 0`). Times are
+optional (epoch seconds or ISO-8601, one per event) and unlock time-based
+constraints, gap tokens, and recency windowing. Then run:
 
 ```bash
 python scripts/profile_data.py data.jsonl --pos-label fraud

@@ -72,7 +72,13 @@ def main():
     ap.add_argument("--itemset", action="store_true",
                     help="emit [EVT:type]+feature-token itemset events; the "
                          "planted motif lives in within-event conjunctions")
+    ap.add_argument("--native-format", action="store_true",
+                    help="with --itemset: emit account_id/event_tokens/"
+                         "event_times keys and composite "
+                         "'[EVT:x]---f:v--f:v' event strings with ':' values")
     args = ap.parse_args()
+    if args.native_format and not args.itemset:
+        ap.error("--native-format requires --itemset")
 
     rng = random.Random(args.seed)
     t0 = 1750000000.0
@@ -117,6 +123,14 @@ def main():
         recs.append({"id": f"g{i:04d}", "label": "good", "events": seq,
                      "times": times_from(gaps)})
     rng.shuffle(recs)
+    if args.native_format:
+        def composite(ev):
+            toks = [ev] if isinstance(ev, str) else list(ev)
+            toks = [t.replace("=", ":") for t in toks]
+            return toks[0] + "---" + "--".join(toks[1:]) if len(toks) > 1 else toks[0]
+        recs = [{"account_id": r["id"], "label": r["label"],
+                 "event_tokens": [composite(e) for e in r["events"]],
+                 "event_times": r["times"]} for r in recs]
     with open(args.out, "w") as f:
         for r in recs:
             f.write(json.dumps(r) + "\n")

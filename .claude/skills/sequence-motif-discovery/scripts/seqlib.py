@@ -3,8 +3,15 @@
 Data format (JSONL, one account per line):
     {"id": "a1", "label": "fraud", "events": ["device=new", ["txn=high", "geo=us"]],
      "times": [1710000000, 1710000345]}
-Each event is a token string or a list of token strings (itemset event).
+Each event is a token string, a list of token strings (itemset event), or a
+composite string "[EVT:type]---feat1:v1--feat2:v2--feat3:v3" (split on '---'
+after the event-type header, then '--' between feature tokens; values must not
+contain '--'). Key aliases are accepted: account_id/event_tokens/event_times.
+"label" is required per record under any key set; numeric labels (0/1) are
+compared as strings, so pass --pos-label 1.
 "times" is optional: epoch seconds (numbers) or ISO-8601 strings, one per event.
+Token separators: feat=val and feat:val both parse (first '=' wins, then ':');
+bracketed [EVT:xxx] tokens parse as feature EVT, value xxx.
 Long CSV is also accepted: columns id,label,order,token with optional time column
 (epoch seconds or ISO-8601); order breaks ties / substitutes when time is absent.
 """
@@ -61,6 +68,13 @@ def parse_duration(v):
 
 def _norm_event(ev):
     if isinstance(ev, str):
+        if "--" in ev:  # composite: "[EVT:x]---f1:v1--f2:v2"
+            if "---" in ev:
+                head, rest = ev.split("---", 1)
+                parts = [head] + rest.split("--")
+            else:
+                parts = ev.split("--")
+            return frozenset(p for p in parts if p)
         return frozenset([ev])
     return frozenset(str(t) for t in ev)
 
@@ -170,8 +184,16 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
                 if not line:
                     continue
                 rec = json.loads(line)
-                times = rec.get("times")
-                add(rec["id"], rec["label"], [_norm_event(e) for e in rec["events"]],
+                aid = rec.get("id", rec.get("account_id"))
+                events = rec.get("events", rec.get("event_tokens"))
+                times = rec.get("times", rec.get("event_times"))
+                if aid is None or events is None:
+                    raise ValueError(f"record missing id/account_id or "
+                                     f"events/event_tokens: {line[:120]}")
+                if "label" not in rec:
+                    raise ValueError(f"account {aid} has no 'label' field — every "
+                                     "record needs one (e.g. fraud/good)")
+                add(aid, rec["label"], [_norm_event(e) for e in events],
                     [parse_time(t) for t in times] if times else None)
     return ds
 
@@ -195,11 +217,14 @@ def stratified_split(ds, test_frac, seed):
 
 def token_split(token, sep="="):
     """(feature, value) for a token. Bracketed type tokens like '[EVT:login]'
-    parse as ('EVT', 'login'); plain tokens split on sep; else (token, token)."""
+    parse as ('EVT', 'login'); plain tokens split on sep, falling back to ':'
+    (so feat=val and feat:val styles both work); else (token, token)."""
     if token.startswith("[") and token.endswith("]") and ":" in token:
         return tuple(token[1:-1].split(":", 1))
     if sep in token:
         return tuple(token.split(sep, 1))
+    if ":" in token:
+        return tuple(token.split(":", 1))
     return token, token
 
 
