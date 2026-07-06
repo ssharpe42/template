@@ -34,13 +34,17 @@ Design goal: everything expressible here is trivially portable to a rule engine.
 Token parsing: `feat=val` splits on `=`; bracketed type tokens `[EVT:xxx]` parse as
 feature `EVT`, value `xxx` — so `{"feature": "EVT", "values": ["login", "txn"]}` anchors
 a step on event *type* regardless of its other feature tokens.
-- **constraints** (all optional):
-  - `max_gap`: max number of *intervening* events between consecutive matched steps
+- **constraints** (all optional; see "Timing semantics, precisely" below):
+  - `max_gap`: max number of *intervening* events between **consecutive** matched steps
     (0 = strictly adjacent). Omit for unlimited.
-  - `window`: max span in events from first to last matched step (inclusive).
-  - `max_time_gap`: max **seconds** between consecutive matched steps (requires event
+  - `window`: max span **in events** from the **first to the last** matched step
+    (inclusive). This is about the motif's extent — NOT about position within the
+    account's history (that is the observation window, a preprocessing concept).
+  - `max_time_gap`: max time between **consecutive** matched steps (requires event
     times in the data; ignored when an account has no times).
-  - `time_window`: max seconds from first to last matched step.
+  - `time_window`: max time from the **first to the last** matched step — i.e. "the
+    whole motif happens within X". Durations accept `'10m'`/`'6h'`-style strings or
+    seconds.
   - `scope`: `"anywhere"` (default), `"prefix"` (match must start in first `window`
     events), `"suffix"` (must end in last `window` events; requires `window`).
 - **absent**: list of predicates (same forms as steps); the pattern only matches if NO
@@ -49,6 +53,48 @@ a step on event *type* regardless of its other feature tokens.
   (greedy left-to-right count; default 1).
 
 Matching uses backtracking, so gap/window constraints are exact, not greedy-approximate.
+
+## Timing semantics, precisely
+
+Three distinct concepts; do not conflate them.
+
+Say a pattern's steps S1..Sk match events e1..ek at times t1..tk. All four DSL
+constraints apply to the **matched events only** — events in between are irrelevant
+except through `max_gap`:
+
+| constraint | applies to | unit | meaning |
+|---|---|---|---|
+| `max_gap` | consecutive pairs (e_i, e_i+1) | events | ≤ N unmatched events strictly between them |
+| `max_time_gap` | consecutive pairs (e_i, e_i+1) | time | t_(i+1) − t_i ≤ D, for EVERY pair |
+| `window` | first → last (e1, ek) | events | motif spans ≤ N events, inclusive |
+| `time_window` | first → last (e1, ek) | time | t_k − t_1 ≤ D ("whole motif within D") |
+
+Note `max_time_gap` and `time_window` differ: 3 steps with `max_time_gap: "1h"` may
+span up to 2h total; `time_window: "1h"` bounds the total span regardless of how the
+gaps are distributed. Use `time_window` for "burst" motifs (this is also the classic
+"gap between first and last event of the motif" definition); use `max_time_gap` for
+"chain" motifs where every hand-off must be quick.
+
+**The observation window is a different thing entirely.** `--recent-seconds 6mo`
+(preprocessing, all scripts) decides how much history before each account's END —
+fraud: the pre-leak cutoff; good: the random cut point — is kept in the dataset at all.
+It anchors at the sequence end and applies before any matching. DSL constraints never
+reference the sequence end unless you explicitly use `scope: "suffix"`.
+
+Worked example — account history (observation window already applied), pattern
+`A → B → C`:
+
+```
+time:    day 0      day 3      day 4      day 4+10min   day 9        <- END (cut)
+event:   A          x          B          C             y
+```
+
+- matched events: A(day 0), B(day 4), C(day 4 + 10min)
+- `max_gap: 0` fails (x sits between A and B); `max_gap: 1` matches
+- `max_time_gap: "2d"` fails (A→B is 4d); `max_time_gap: "5d"` matches
+- `time_window: "3d"` fails (A→C spans ~4d); `time_window: "5d"` matches
+- `window: 4` matches (A..C spans 4 events inclusive)
+- the trailing y and the distance to the END (day 9) are irrelevant to all of the above
 
 ## Rule-engine translation
 

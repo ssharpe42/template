@@ -87,8 +87,11 @@ Iterate 2–4 rounds. Each round:
    - **Conjoin within events** (itemset data): mined steps are single tokens; use
      `all_of` to require tokens in the SAME event (`[EVT:txn]` + `amt=high`). Seed
      these from the profiler's `--event-pairs` table.
-   - **Tighten**: add `max_gap`/`window` — or with times, `max_time_gap`/`time_window`
-     ("within 10 minutes") — to require the motif happens in a burst.
+   - **Tighten**: add `max_gap`/`window` — or with times, `max_time_gap` (between
+     consecutive steps) / `time_window` (first→last step of the motif) — to require
+     the motif happens in a burst. Semantics: pattern-dsl.md § "Timing semantics,
+     precisely"; these bound the motif's own span, NOT position relative to the
+     account's end (that's the observation window from Phase 0).
    - **Negate**: add `absent` tokens (e.g. fraud motif *without* `kyc=passed`).
    - **Semantics**: use domain reasoning about what the tokens *mean* to propose motifs
      mining missed (e.g. "escalating amounts" as a chain of increasing bins).

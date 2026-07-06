@@ -181,6 +181,11 @@ where the fraud signal lives. Compare a windowed vs full-history profile before
 committing; beware interaction with D2 (if fraud histories end at detection, "recent
 tail" means different things per class).
 
+Terminology guard: this **observation window** (how much history before each account's
+end/cut point exists in the dataset) is unrelated to the DSL's `window`/`time_window`
+constraints, which bound a *motif's own span* from its first to last matched event —
+see pattern-dsl.md § "Timing semantics, precisely".
+
 **Recommended anchoring recipe (equal observation windows).** Combine D2c + D5b so every
 account contributes the *same time period* of history ending at its cut point:
 
