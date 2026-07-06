@@ -48,9 +48,12 @@ python scripts/profile_data.py data.jsonl --pos-label fraud
 Read the profile and **stop to resolve the decision points in
 `references/design.md` § "Decisions that require looking at the data"** (event granularity,
 anchoring/truncation, leakage tokens, imbalance, vocabulary size, timestamps). If times
-exist and histories are long, decide the recency window here (`--recent-seconds` /
-`--recent-events`, D5b) and gap-token buckets (`--gap-buckets`, informed by the profile's
-per-class gap distributions) — use the SAME flags on every subsequent script call. Ask the
+exist and histories are long, decide the anchoring recipe here: the default
+recommendation is equal observation windows —
+`--random-cut-label good --recent-seconds 6mo --min-span 6mo` (design.md § D5b; window
+length from the user/profile) — plus gap-token buckets (`--gap-buckets`, informed by the
+profile's per-class gap distributions). Use the SAME flags on every subsequent script
+call. Ask the
 user only where the data itself doesn't answer the question. Read 5–10 raw sequences per
 class yourself to build intuition — but only for hypothesis generation, never for stats.
 

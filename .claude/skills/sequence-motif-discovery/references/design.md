@@ -174,12 +174,29 @@ Profile flags suspects; the user confirms.
   (a) and (b) compose: mine with gap tokens, tighten with time windows.
 
 **D5b. Recency windowing for scope + compute.** If full histories are long, restrict to
-each account's recent tail with `--recent-seconds` (e.g. last 30/60/90 days) or
-`--recent-events N` — supported by all three scripts. Cost of mining and matching drops
-roughly linearly with discarded events, and recent behavior is usually where the fraud
-signal lives. Compare a windowed vs full-history profile before committing; beware
-interaction with D2 (if fraud histories end at detection, "recent tail" means different
-things per class).
+each account's recent tail with `--recent-seconds 6mo` (durations: s/m/h/d/w/mo/y or raw
+seconds) or `--recent-events N` — supported by all three scripts. Cost of mining and
+matching drops roughly linearly with discarded events, and recent behavior is usually
+where the fraud signal lives. Compare a windowed vs full-history profile before
+committing; beware interaction with D2 (if fraud histories end at detection, "recent
+tail" means different things per class).
+
+**Recommended anchoring recipe (equal observation windows).** Combine D2c + D5b so every
+account contributes the *same time period* of history ending at its cut point:
+
+```bash
+--random-cut-label good --random-cut-seed 0 --recent-seconds 6mo --min-span 6mo
+```
+
+Order of operations in the loader: sort by time → random cut (good) → `--min-span` drops
+accounts with < 6mo of observed history (otherwise window *length* itself leaks the
+label via account age) → keep the last 6mo before the cut. Fraud sequences arrive
+pre-truncated at the user's leak cutoff, so their "cut point" is that cutoff. Check the
+post-window profile: per-class event *counts* inside the window may still differ — that
+is genuine activity-level signal, not an artifact, but the report should say which
+patterns depend on it. Dropped-account counts per class are visible by comparing
+profiles with and without `--min-span`; if the drop rate differs wildly by class,
+revisit the window length with the user.
 
 **D6. Vocabulary size & bin quality.** Vocab > ~5k tokens or features with >20 bins →
 mining drowns.

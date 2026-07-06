@@ -44,6 +44,21 @@ def parse_time(v):
     return datetime.fromisoformat(str(v)).timestamp()
 
 
+_DURATION_UNITS = {"s": 1, "m": 60, "h": 3600, "d": 86400, "w": 604800,
+                   "mo": 2629800, "y": 31557600}
+
+
+def parse_duration(v):
+    """'6mo', '90d', '12h', '30m', '45s', or a plain number of seconds."""
+    if v is None or isinstance(v, (int, float)):
+        return v
+    s = str(v).strip().lower()
+    for unit in sorted(_DURATION_UNITS, key=len, reverse=True):
+        if s.endswith(unit):
+            return float(s[: -len(unit)]) * _DURATION_UNITS[unit]
+    return float(s)
+
+
 def _norm_event(ev):
     if isinstance(ev, str):
         return frozenset([ev])
@@ -74,10 +89,11 @@ def add_gap_tokens(seq, times, edges):
 
 
 def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=None,
-                 gap_buckets=None, random_cut_label=None, random_cut_seed=0):
+                 gap_buckets=None, random_cut_label=None, random_cut_seed=0,
+                 min_span_seconds=None):
     """Load and optionally window each sequence to its recent tail.
 
-    recent_seconds: keep only events within this many seconds of the account's
+    recent_seconds: keep only events within this duration of the account's
         last event (requires times). recent_events: keep only the last N events.
     Both cut mining/matching cost roughly linearly in what they discard.
     gap_buckets: ascending seconds edges; adds gap=... tokens (requires times).
@@ -86,8 +102,15 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
         whose sequences end at a determined cutoff (e.g. fraud pre-truncated
         before label leakage). One view per account keeps significance stats
         valid; vary random_cut_seed across runs to check pattern stability.
+    min_span_seconds: DROP accounts whose history (after any random cut, before
+        recent windowing) spans less than this duration — pair with
+        recent_seconds so every kept account contributes the same observation
+        period and window length can't leak the label.
+    Durations may be given as '6mo'/'90d'-style strings.
     """
     excl = set(exclude_tokens)
+    recent_seconds = parse_duration(recent_seconds)
+    min_span_seconds = parse_duration(min_span_seconds)
     cut_rng = random.Random(random_cut_seed)
     ds = Dataset()
 
@@ -98,10 +121,17 @@ def load_dataset(path, exclude_tokens=(), recent_seconds=None, recent_events=Non
             times = [times[i] for i in order]
         else:
             times = None
+        if times is None and (recent_seconds is not None
+                              or min_span_seconds is not None):
+            raise ValueError(f"account {aid} has no event times but a "
+                             "time-based window/filter was requested")
         if random_cut_label is not None and label == random_cut_label and len(events) > 1:
             k = cut_rng.randint(1, len(events))
             events = events[:k]
             times = times[:k] if times else None
+        if min_span_seconds is not None:
+            if len(times) < 2 or times[-1] - times[0] < min_span_seconds:
+                return  # drop: not enough observed history for a fair window
         if recent_seconds is not None and times:
             cut = times[-1] - recent_seconds
             k = next((i for i, t in enumerate(times) if t >= cut), len(times) - 1)
@@ -237,7 +267,10 @@ def _find_from(seq, times, steps, cons, si, prev, first):
 
 
 def pattern_matches(seq, pattern, times=None):
-    cons = pattern.get("constraints", {}) or {}
+    cons = dict(pattern.get("constraints", {}) or {})
+    for k in ("max_time_gap", "time_window"):
+        if k in cons:
+            cons[k] = parse_duration(cons[k])  # allow '10m' / '6h' in the DSL
     steps = pattern["steps"]
     for pred in pattern.get("absent", []) or []:
         if any(pred_match(ev, pred) for ev in seq):
@@ -334,14 +367,20 @@ def is_subsequence(small, big):
 
 def add_windowing_args(ap):
     """Shared CLI flags for time-aware preprocessing (all scripts)."""
-    ap.add_argument("--recent-seconds", type=float, default=None,
-                    help="keep only events within T seconds of each account's "
-                         "last event (needs times; cuts compute)")
+    ap.add_argument("--recent-seconds", default=None,
+                    help="keep only events within this duration of each "
+                         "account's last event, e.g. '6mo', '90d', or seconds "
+                         "(needs times; cuts compute)")
     ap.add_argument("--recent-events", type=int, default=None,
                     help="keep only each account's last N events")
+    ap.add_argument("--min-span", default=None,
+                    help="drop accounts with less observed history than this "
+                         "duration (after random cut), e.g. '6mo' — pair with "
+                         "--recent-seconds for equal observation windows")
     ap.add_argument("--gap-buckets", default=None,
-                    help="comma-separated ascending seconds edges, e.g. "
-                         "'60,3600,86400': adds gap=lt_1m/... tokens (needs times)")
+                    help="comma-separated ascending gap edges, e.g. "
+                         "'60,1h,1d' or seconds: adds gap=lt_1m/... tokens "
+                         "(needs times)")
     ap.add_argument("--random-cut-label", default=None,
                     help="truncate accounts with this label at a random cut "
                          "point (random view), e.g. 'good' — mimics fraud "
@@ -353,7 +392,8 @@ def windowing_kwargs(args):
     return {
         "recent_seconds": args.recent_seconds,
         "recent_events": args.recent_events,
-        "gap_buckets": ([float(x) for x in args.gap_buckets.split(",")]
+        "min_span_seconds": args.min_span,
+        "gap_buckets": ([parse_duration(x) for x in args.gap_buckets.split(",")]
                         if args.gap_buckets else None),
         "random_cut_label": args.random_cut_label,
         "random_cut_seed": args.random_cut_seed,

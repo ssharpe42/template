@@ -90,8 +90,9 @@ def main():
     ap.add_argument("--max-len", type=int, default=4)
     ap.add_argument("--max-gap", type=int, default=None,
                     help="max intervening events between consecutive steps")
-    ap.add_argument("--max-time-gap", type=float, default=None,
-                    help="max seconds between consecutive steps (needs times)")
+    ap.add_argument("--max-time-gap", default=None,
+                    help="max time between consecutive steps, e.g. '1h', '30m' "
+                         "or seconds (needs times)")
     ap.add_argument("--top", type=int, default=50)
     ap.add_argument("--metric", default="wracc",
                     choices=["wracc", "lift", "odds_ratio", "info_gain", "precision"])
@@ -104,6 +105,8 @@ def main():
     add_windowing_args(ap)
     args = ap.parse_args()
 
+    from seqlib import parse_duration
+    args.max_time_gap = parse_duration(args.max_time_gap)
     ds = load_dataset(args.data, exclude_tokens=args.exclude_tokens,
                       **windowing_kwargs(args))
     if args.max_time_gap is not None and not ds.has_times:
