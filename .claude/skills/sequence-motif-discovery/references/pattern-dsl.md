@@ -69,11 +69,35 @@ except through `max_gap`:
 | `window` | first → last (e1, ek) | events | motif spans ≤ N events, inclusive |
 | `time_window` | first → last (e1, ek) | time | t_k − t_1 ≤ D ("whole motif within D") |
 
-Note `max_time_gap` and `time_window` differ: 3 steps with `max_time_gap: "1h"` may
-span up to 2h total; `time_window: "1h"` bounds the total span regardless of how the
-gaps are distributed. Use `time_window` for "burst" motifs (this is also the classic
-"gap between first and last event of the motif" definition); use `max_time_gap` for
-"chain" motifs where every hand-off must be quick.
+**Events vs time — `max_gap` vs `max_time_gap`.** These are the same constraint
+measured in different units. Matching pattern `A → B` against:
+
+```
+event:  A     x     x     B
+time:   9:00  9:01  9:02  11:30
+```
+
+- `max_gap` counts *other events between the matched steps*: two here (`x`, `x`), so
+  `max_gap: 1` fails and `max_gap: 2` matches. The clock is irrelevant — those events
+  could be minutes or months apart.
+- `max_time_gap` measures *elapsed time between the matched steps*: 2.5h here, so
+  `max_time_gap: "1h"` fails and `max_time_gap: "3h"` matches. The number of
+  intervening events is irrelevant — zero or fifty.
+
+They capture different behaviors: `max_gap: 0` means "B is the *very next thing* the
+account did after A" (nothing in between, however long the wait); `max_time_gap: "10m"`
+means "B happened *quickly* after A" (even if the account did ten other things in those
+ten minutes). For an active account these diverge sharply — many events per minute
+consumes an event-count gap fast while a time gap stays open; a dormant account is the
+reverse. The same units distinction holds for `window` (events, first→last inclusive)
+vs `time_window` (time, first→last). When the data has timestamps, prefer the time
+versions; the event-count versions exist for datasets without times.
+
+**Per-hop vs total span — `max_time_gap` vs `time_window`.** Also not interchangeable:
+3 steps with `max_time_gap: "1h"` may span up to 2h total; `time_window: "1h"` bounds
+the total span regardless of how the gaps are distributed. Use `time_window` for
+"burst" motifs (this is the classic "gap between first and last event of the motif"
+definition); use `max_time_gap` for "chain" motifs where every hand-off must be quick.
 
 **The observation window is a different thing entirely.** `--recent-seconds 6mo`
 (preprocessing, all scripts) decides how much history before each account's END —
