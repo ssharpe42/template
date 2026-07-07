@@ -265,3 +265,5 @@ cordova/resources
 electron-build
 electron/www
 typings
+__pycache__/
+*.pyc
