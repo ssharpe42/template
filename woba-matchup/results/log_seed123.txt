@@ -1,0 +1,120 @@
+league wOBA season 1: 0.3129
+true batter wOBA SD (season-4 talent): 0.0431 (incl. matchup variation)
+true park factor SD: 0.0292
+tuned regression constants: k_bat=1000, k_pit=4000 (weighted PA)
+
+[realistic projections] league-only baseline
+  params: [0.9079]
+  holdout RMSE vs true E[wOBA]: 40.877 pts
+  holdout MSE vs realized:      0.265655
+
+[realistic projections] batter-only baseline
+  params: [0.7656]
+  holdout RMSE vs true E[wOBA]: 33.704 pts
+  holdout MSE vs realized:      0.265010
+
+[realistic projections] additive (overall-league reference)
+  params: [0.7696]
+  holdout RMSE vs true E[wOBA]: 33.619 pts
+  holdout MSE vs realized:      0.265005
+
+[realistic projections] additive (cell reference)
+  params: [0.7703]
+  holdout RMSE vs true E[wOBA]: 32.689 pts
+  holdout MSE vs realized:      0.264950
+
+[realistic projections] multiplicative
+  params: [0.7693]
+  holdout RMSE vs true E[wOBA]: 32.750 pts
+  holdout MSE vs realized:      0.264951
+
+[realistic projections] Morey-Z (probit)
+  params: [0.8149]
+  holdout RMSE vs true E[wOBA]: 30.987 pts
+  holdout MSE vs realized:      0.264872
+
+[realistic projections] odds ratio (s=1)
+  params: [0.77]
+  holdout RMSE vs true E[wOBA]: 32.672 pts
+  holdout MSE vs realized:      0.264947
+
+[realistic projections] odds ratio (free scale s)
+  params: [0.7706, 0.5218]
+  holdout RMSE vs true E[wOBA]: 32.633 pts
+  holdout MSE vs realized:      0.264946
+
+[realistic projections] free linear
+  params: [0.8148, 0.629, -0.0031, 0.8262]
+  holdout RMSE vs true E[wOBA]: 30.934 pts
+  holdout MSE vs realized:      0.264864
+
+[realistic projections] free log-odds
+  params: [0.8155, 0.635, -0.0132, 0.8102]
+  holdout RMSE vs true E[wOBA]: 30.920 pts
+  holdout MSE vs realized:      0.264863
+
+[realistic projections] free linear + interaction
+  params: [0.8139, 0.626, 0.527, -0.0031, 0.8263]
+  holdout RMSE vs true E[wOBA]: 30.929 pts
+  holdout MSE vs realized:      0.264861
+
+[realistic projections] BEST (holdout RMSE vs truth): free log-odds
+
+[oracle inputs] league-only baseline
+  params: [0.8952]
+  holdout RMSE vs true E[wOBA]: 40.810 pts
+  holdout MSE vs realized:      0.265643
+
+[oracle inputs] batter-only baseline
+  params: [0.9698]
+  holdout RMSE vs true E[wOBA]: 23.194 pts
+  holdout MSE vs realized:      0.264412
+
+[oracle inputs] additive (overall-league reference)
+  params: [1.0192]
+  holdout RMSE vs true E[wOBA]: 12.213 pts
+  holdout MSE vs realized:      0.264005
+
+[oracle inputs] additive (cell reference)
+  params: [1.0263]
+  holdout RMSE vs true E[wOBA]: 8.054 pts
+  holdout MSE vs realized:      0.263928
+
+[oracle inputs] multiplicative
+  params: [1.0242]
+  holdout RMSE vs true E[wOBA]: 7.915 pts
+  holdout MSE vs realized:      0.263928
+
+[oracle inputs] Morey-Z (probit)
+  params: [1.0029]
+  holdout RMSE vs true E[wOBA]: 13.488 pts
+  holdout MSE vs realized:      0.264080
+
+[oracle inputs] odds ratio (s=1)
+  params: [1.025]
+  holdout RMSE vs true E[wOBA]: 7.864 pts
+  holdout MSE vs realized:      0.263926
+
+[oracle inputs] odds ratio (free scale s)
+  params: [1.0244, 3.346]
+  holdout RMSE vs true E[wOBA]: 7.887 pts
+  holdout MSE vs realized:      0.263927
+
+[oracle inputs] free linear
+  params: [1.0098, 1.0379, 0.0053, 0.9697]
+  holdout RMSE vs true E[wOBA]: 4.824 pts
+  holdout MSE vs realized:      0.263872
+
+[oracle inputs] free log-odds
+  params: [1.0081, 1.0426, 0.0251, 0.964]
+  holdout RMSE vs true E[wOBA]: 4.446 pts
+  holdout MSE vs realized:      0.263868
+
+[oracle inputs] free linear + interaction
+  params: [1.0236, 1.0462, 1.0444, 0.0054, 0.9693]
+  holdout RMSE vs true E[wOBA]: 4.658 pts
+  holdout MSE vs realized:      0.263871
+
+[oracle inputs] BEST (holdout RMSE vs truth): free log-odds
+
+wrote results/results_seed123.json
