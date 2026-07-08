@@ -1,0 +1,165 @@
+[
+  {
+    "id": "S06",
+    "name": "Never worked a problem or posted",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"any_of": ["problem", "discussion"]}
+    ]
+  },
+  {
+    "id": "S07",
+    "name": "Never opened the wiki",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"token": "wiki"}
+    ]
+  },
+  {
+    "id": "S14",
+    "name": "Never a week-plus gap in the log",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"token": "gap=ge_7d"}
+    ]
+  },
+  {
+    "id": "S15",
+    "name": "Heavy browsing, zero engagement",
+    "expect": "dropout",
+    "steps": [
+      {"any_of": ["navigate", "access"]}
+    ],
+    "min_count": 10,
+    "absent": [
+      {"any_of": ["problem", "discussion"]}
+    ]
+  },
+  {
+    "id": "S16",
+    "name": "Pure passive consumer",
+    "expect": "dropout",
+    "steps": [
+      {"any_of": ["navigate", "access", "video", "page_close"]}
+    ],
+    "absent": [
+      {"any_of": ["problem", "discussion", "wiki"]}
+    ]
+  },
+  {
+    "id": "S17",
+    "name": "Never returned after a day away",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"any_of": ["gap=lt_7d", "gap=ge_7d"]}
+    ]
+  },
+  {
+    "id": "S18",
+    "name": "Silent shopper: no work, no comeback",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"any_of": ["problem", "discussion"]},
+      {"any_of": ["gap=lt_7d", "gap=ge_7d"]}
+    ]
+  },
+  {
+    "id": "S19",
+    "name": "Watched videos but never tried a problem",
+    "expect": "dropout",
+    "steps": [
+      {"token": "video"}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ]
+  },
+  {
+    "id": "S05",
+    "name": "Came back from two week-long breaks",
+    "expect": "persist",
+    "steps": [
+      {"token": "gap=ge_7d"}
+    ],
+    "min_count": 2
+  },
+  {
+    "id": "S08",
+    "name": "Returns within a week, repeatedly",
+    "expect": "persist",
+    "steps": [
+      {"token": "gap=lt_7d"}
+    ],
+    "min_count": 3
+  },
+  {
+    "id": "S09",
+    "name": "Repeated problem-set work",
+    "expect": "persist",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 3
+  },
+  {
+    "id": "S10",
+    "name": "Repeated discussion participation",
+    "expect": "persist",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 2
+  },
+  {
+    "id": "S20",
+    "name": "Six-plus weekly returns",
+    "expect": "persist",
+    "steps": [
+      {"token": "gap=lt_7d"}
+    ],
+    "min_count": 6
+  },
+  {
+    "id": "S21",
+    "name": "Ten-plus problem events",
+    "expect": "persist",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 10
+  },
+  {
+    "id": "S22",
+    "name": "Problem work on separate days",
+    "expect": "persist",
+    "steps": [
+      {"token": "problem"},
+      {"any_of": ["gap=lt_7d", "gap=ge_7d"]},
+      {"token": "problem"}
+    ]
+  },
+  {
+    "id": "S23",
+    "name": "Week-later return straight into materials",
+    "expect": "persist",
+    "steps": [
+      {"all_of": ["access", "gap=lt_7d"]},
+      {"token": "navigate"}
+    ]
+  }
+]

@@ -1,0 +1,133 @@
+[
+  {
+    "id": "S01",
+    "name": "Any week-plus silence",
+    "expect": "dropout",
+    "steps": [
+      {"token": "gap=ge_7d"}
+    ]
+  },
+  {
+    "id": "S02",
+    "name": "Silent into course end",
+    "expect": "dropout",
+    "steps": [
+      {"all_of": ["course_end", "gap=ge_7d"]}
+    ]
+  },
+  {
+    "id": "S03",
+    "name": "One quick session then vanish",
+    "expect": "dropout",
+    "steps": [
+      {"token": "gap=lt_1h"},
+      {"token": "gap=lt_1h"},
+      {"token": "gap=ge_7d"}
+    ]
+  },
+  {
+    "id": "S04",
+    "name": "Activity straight into long absence",
+    "expect": "dropout",
+    "steps": [
+      {"any_of": ["navigate", "access", "video", "page_close"]},
+      {"token": "gap=ge_7d"}
+    ],
+    "constraints": {"max_gap": 0}
+  },
+  {
+    "id": "S05",
+    "name": "Two separate long absences",
+    "expect": "dropout",
+    "steps": [
+      {"token": "gap=ge_7d"}
+    ],
+    "min_count": 2
+  },
+  {
+    "id": "S06",
+    "name": "Never worked a problem or posted",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"any_of": ["problem", "discussion"]}
+    ]
+  },
+  {
+    "id": "S07",
+    "name": "Never opened the wiki",
+    "expect": "dropout",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"token": "wiki"}
+    ]
+  },
+  {
+    "id": "S08",
+    "name": "Returns within a week, repeatedly",
+    "expect": "persist",
+    "steps": [
+      {"token": "gap=lt_7d"}
+    ],
+    "min_count": 3
+  },
+  {
+    "id": "S09",
+    "name": "Repeated problem-set work",
+    "expect": "persist",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 3
+  },
+  {
+    "id": "S10",
+    "name": "Repeated discussion participation",
+    "expect": "persist",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 2
+  },
+  {
+    "id": "S11",
+    "name": "Browse, return within a week, do problems",
+    "expect": "persist",
+    "steps": [
+      {"any_of": ["navigate", "access", "page_close"]},
+      {"all_of": ["problem", "gap=lt_7d"]}
+    ]
+  },
+  {
+    "id": "S12",
+    "name": "Repeated wiki visits",
+    "expect": "persist",
+    "steps": [
+      {"token": "wiki"}
+    ],
+    "min_count": 2
+  },
+  {
+    "id": "S13",
+    "name": "Active right up to course end",
+    "expect": "persist",
+    "steps": [
+      {"all_of": ["course_end", "gap=lt_1d"]}
+    ]
+  },
+  {
+    "id": "S14",
+    "name": "Never went silent a week or more",
+    "expect": "persist",
+    "steps": [
+      {"token": "navigate"}
+    ],
+    "absent": [
+      {"token": "gap=ge_7d"}
+    ]
+  }
+]

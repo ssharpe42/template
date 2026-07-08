@@ -1,0 +1,173 @@
+[
+  {
+    "id": "H03",
+    "name": "Browse without problem attempts",
+    "steps": [
+      {"any_of": ["navigate", "access"]}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "min_count": 5,
+    "expect": "dropout"
+  },
+  {
+    "id": "H06",
+    "name": "No assignment work across engagement",
+    "steps": [
+      {"any_of": ["navigate", "access", "page_close", "video"]}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "min_count": 8,
+    "expect": "dropout"
+  },
+  {
+    "id": "H22",
+    "name": "One-session wonder",
+    "steps": [
+      {"any_of": ["navigate", "access", "video", "page_close", "problem", "discussion", "wiki"]}
+    ],
+    "absent": [
+      {"token": "gap=lt_1d"},
+      {"token": "gap=lt_7d"},
+      {"token": "gap=ge_7d"}
+    ],
+    "min_count": 3,
+    "expect": "dropout"
+  },
+  {
+    "id": "H23",
+    "name": "Never came back after a day away",
+    "steps": [
+      {"any_of": ["navigate", "access", "video", "page_close", "problem", "discussion", "wiki"]}
+    ],
+    "absent": [
+      {"token": "gap=lt_7d"},
+      {"token": "gap=ge_7d"}
+    ],
+    "min_count": 3,
+    "expect": "dropout"
+  },
+  {
+    "id": "H24",
+    "name": "Browsed a lot but never interacted",
+    "steps": [
+      {"any_of": ["navigate", "access", "page_close", "video"]}
+    ],
+    "absent": [
+      {"token": "problem"},
+      {"token": "discussion"},
+      {"token": "wiki"}
+    ],
+    "min_count": 5,
+    "expect": "dropout"
+  },
+  {
+    "id": "H25",
+    "name": "Video watcher who never tried a problem",
+    "steps": [
+      {"token": "video"}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "min_count": 2,
+    "expect": "dropout"
+  },
+  {
+    "id": "H08",
+    "name": "Consistent same-week return rhythm",
+    "steps": [
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"}
+    ],
+    "expect": "persist"
+  },
+  {
+    "id": "H26",
+    "name": "Strict weekly return habit",
+    "steps": [
+      {"token": "gap=lt_7d"}
+    ],
+    "min_count": 6,
+    "expect": "persist"
+  },
+  {
+    "id": "H10",
+    "name": "Forum participation repeats",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 3,
+    "expect": "persist"
+  },
+  {
+    "id": "H27",
+    "name": "Deep forum engagement",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 8,
+    "expect": "persist"
+  },
+  {
+    "id": "H11",
+    "name": "Repeated focused same-session activity",
+    "steps": [
+      {"all_of": ["navigate", "gap=lt_1h"]},
+      {"all_of": ["navigate", "gap=lt_1h"]}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H12",
+    "name": "Material engagement cycle with daily returns",
+    "steps": [
+      {"token": "access"},
+      {"token": "navigate"},
+      {"token": "gap=lt_1d"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H13",
+    "name": "Reference resource consultation (wiki)",
+    "steps": [
+      {"token": "wiki"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H14",
+    "name": "Repeated problem-solving attempts",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 4,
+    "expect": "persist"
+  },
+  {
+    "id": "H19",
+    "name": "Heavy problem grinding",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 15,
+    "expect": "persist"
+  },
+  {
+    "id": "H21",
+    "name": "Resilient return to assignment work",
+    "steps": [
+      {"token": "gap=ge_7d"},
+      {"token": "problem"}
+    ],
+    "expect": "persist"
+  }
+]

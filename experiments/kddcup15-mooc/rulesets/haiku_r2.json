@@ -1,0 +1,164 @@
+[
+  {
+    "id": "H01",
+    "name": "Abrupt ending after silence",
+    "steps": [
+      {"all_of": ["course_end", "gap=ge_7d"]}
+    ],
+    "expect": "dropout"
+  },
+  {
+    "id": "H02",
+    "name": "Navigate then 7-day silence",
+    "steps": [
+      {"token": "navigate"},
+      {"token": "gap=ge_7d"}
+    ],
+    "constraints": {"max_gap": 10},
+    "expect": "dropout"
+  },
+  {
+    "id": "H03",
+    "name": "Browse without problem attempts",
+    "steps": [
+      {"any_of": ["navigate", "access"]}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "min_count": 5,
+    "expect": "dropout"
+  },
+  {
+    "id": "H05",
+    "name": "Passive video viewing only",
+    "steps": [
+      {"token": "video"},
+      {"token": "gap=ge_7d"}
+    ],
+    "absent": [
+      {"token": "problem"},
+      {"token": "discussion"}
+    ],
+    "expect": "dropout"
+  },
+  {
+    "id": "H06",
+    "name": "No assignment work across engagement",
+    "steps": [
+      {"any_of": ["navigate", "access", "page_close", "video"]}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "min_count": 8,
+    "expect": "dropout"
+  },
+  {
+    "id": "H16",
+    "name": "Silent finish and never did problems",
+    "steps": [
+      {"all_of": ["course_end", "gap=ge_7d"]}
+    ],
+    "absent": [
+      {"token": "problem"}
+    ],
+    "expect": "dropout"
+  },
+  {
+    "id": "H08",
+    "name": "Consistent same-week return rhythm",
+    "steps": [
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"}
+    ],
+    "expect": "persist"
+  },
+  {
+    "id": "H10",
+    "name": "Forum participation repeats",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 3,
+    "expect": "persist"
+  },
+  {
+    "id": "H11",
+    "name": "Repeated focused same-session activity",
+    "steps": [
+      {"all_of": ["navigate", "gap=lt_1h"]},
+      {"all_of": ["navigate", "gap=lt_1h"]}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H12",
+    "name": "Material engagement cycle with daily returns",
+    "steps": [
+      {"token": "access"},
+      {"token": "navigate"},
+      {"token": "gap=lt_1d"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H13",
+    "name": "Reference resource consultation (wiki)",
+    "steps": [
+      {"token": "wiki"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H14",
+    "name": "Repeated problem-solving attempts",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 4,
+    "expect": "persist"
+  },
+  {
+    "id": "H17",
+    "name": "Active in the final day",
+    "steps": [
+      {"any_of": ["access", "navigate", "problem", "video", "discussion", "wiki"]},
+      {"token": "course_end"}
+    ],
+    "constraints": {"max_time_gap": "1d"},
+    "expect": "persist"
+  },
+  {
+    "id": "H18",
+    "name": "Problem work close to course end",
+    "steps": [
+      {"token": "problem"},
+      {"token": "course_end"}
+    ],
+    "constraints": {"max_time_gap": "3d"},
+    "expect": "persist"
+  },
+  {
+    "id": "H19",
+    "name": "Heavy problem grinding",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 15,
+    "expect": "persist"
+  },
+  {
+    "id": "H21",
+    "name": "Resilient return to assignment work",
+    "steps": [
+      {"token": "gap=ge_7d"},
+      {"token": "problem"}
+    ],
+    "expect": "persist"
+  }
+]

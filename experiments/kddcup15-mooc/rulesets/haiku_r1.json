@@ -1,0 +1,147 @@
+[
+  {
+    "id": "H01",
+    "name": "Abrupt ending after silence",
+    "steps": [
+      {"all_of": ["course_end", "gap=ge_7d"]}
+    ],
+    "expect": "dropout"
+  },
+  {
+    "id": "H02",
+    "name": "Navigate then 7-day silence",
+    "steps": [
+      {"token": "navigate"},
+      {"token": "gap=ge_7d"}
+    ],
+    "constraints": {"max_gap": 10},
+    "expect": "dropout"
+  },
+  {
+    "id": "H03",
+    "name": "Browse without problem attempts",
+    "steps": [
+      {"any_of": ["navigate", "access"]}
+    ],
+    "absent": ["problem"],
+    "min_count": 5,
+    "expect": "dropout"
+  },
+  {
+    "id": "H04",
+    "name": "Sporadic checking with repeated 7-day gaps",
+    "steps": [
+      {"token": "gap=ge_7d"}
+    ],
+    "min_count": 2,
+    "expect": "dropout"
+  },
+  {
+    "id": "H05",
+    "name": "Passive video viewing only",
+    "steps": [
+      {"token": "video"},
+      {"token": "gap=ge_7d"}
+    ],
+    "absent": ["problem", "discussion"],
+    "expect": "dropout"
+  },
+  {
+    "id": "H06",
+    "name": "No assignment work across engagement",
+    "steps": [
+      {"any_of": ["navigate", "access", "page_close", "video"]}
+    ],
+    "absent": ["problem"],
+    "min_count": 8,
+    "expect": "dropout"
+  },
+  {
+    "id": "H07",
+    "name": "Page close followed by 7-day absence",
+    "steps": [
+      {"token": "page_close"},
+      {"token": "gap=ge_7d"}
+    ],
+    "expect": "dropout"
+  },
+  {
+    "id": "H08",
+    "name": "Consistent same-week return rhythm",
+    "steps": [
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"},
+      {"token": "gap=lt_7d"}
+    ],
+    "expect": "persist"
+  },
+  {
+    "id": "H09",
+    "name": "Access-navigate-problem solution chain",
+    "steps": [
+      {"token": "access"},
+      {"token": "navigate"},
+      {"token": "problem"}
+    ],
+    "constraints": {"max_gap": 3},
+    "expect": "persist"
+  },
+  {
+    "id": "H10",
+    "name": "Forum participation repeats",
+    "steps": [
+      {"token": "discussion"}
+    ],
+    "min_count": 3,
+    "expect": "persist"
+  },
+  {
+    "id": "H11",
+    "name": "Repeated focused same-session activity",
+    "steps": [
+      {"all_of": ["navigate", "gap=lt_1h"]},
+      {"all_of": ["navigate", "gap=lt_1h"]}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H12",
+    "name": "Material engagement cycle with daily returns",
+    "steps": [
+      {"token": "access"},
+      {"token": "navigate"},
+      {"token": "gap=lt_1d"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H13",
+    "name": "Reference resource consultation (wiki)",
+    "steps": [
+      {"token": "wiki"}
+    ],
+    "min_count": 2,
+    "expect": "persist"
+  },
+  {
+    "id": "H14",
+    "name": "Repeated problem-solving attempts",
+    "steps": [
+      {"token": "problem"}
+    ],
+    "min_count": 4,
+    "expect": "persist"
+  },
+  {
+    "id": "H15",
+    "name": "Rapid page cycling with same-week returns",
+    "steps": [
+      {"token": "page_close"},
+      {"all_of": ["access", "gap=lt_7d"]},
+      {"all_of": ["access", "gap=lt_7d"]}
+    ],
+    "expect": "persist"
+  }
+]

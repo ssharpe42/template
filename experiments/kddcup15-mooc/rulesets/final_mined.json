@@ -1,0 +1,58 @@
+[
+ {
+  "id": "M000",
+  "name": "access \u2192 gap=lt_7d \u2192 gap=lt_1h",
+  "steps": [
+   {
+    "token": "access"
+   },
+   {
+    "token": "gap=lt_7d"
+   },
+   {
+    "token": "gap=lt_1h"
+   }
+  ],
+  "train_selection_stats": {
+   "n_pos_match": 7549,
+   "n_neg_match": 7484,
+   "support_pos": 0.188,
+   "support_neg": 0.7114,
+   "precision": 0.5022,
+   "recall_pos": 0.188,
+   "lift": 0.264,
+   "odds_ratio": 0.094,
+   "wracc": -0.0861,
+   "info_gain": 0.14469,
+   "fisher_p": 1.0
+  }
+ },
+ {
+  "id": "M003",
+  "name": "access \u2192 navigate \u2192 problem",
+  "steps": [
+   {
+    "token": "access"
+   },
+   {
+    "token": "navigate"
+   },
+   {
+    "token": "problem"
+   }
+  ],
+  "train_selection_stats": {
+   "n_pos_match": 6292,
+   "n_neg_match": 7127,
+   "support_pos": 0.1567,
+   "support_neg": 0.6775,
+   "precision": 0.4689,
+   "recall_pos": 0.1567,
+   "lift": 0.231,
+   "odds_ratio": 0.088,
+   "wracc": -0.08567,
+   "info_gain": 0.14929,
+   "fisher_p": 0.9999999999811756
+  }
+ }
+]
