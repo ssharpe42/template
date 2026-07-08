@@ -1,0 +1,130 @@
+[
+ {
+  "id": "M016",
+  "name": "access \u2192 gap=lt_7d \u2192 gap=lt_1h",
+  "steps": [
+   {
+    "token": "access"
+   },
+   {
+    "token": "gap=lt_7d"
+   },
+   {
+    "token": "gap=lt_1h"
+   }
+  ],
+  "train_selection_stats": {
+   "n_pos_match": 7549,
+   "n_neg_match": 7484,
+   "support_pos": 0.188,
+   "support_neg": 0.7114,
+   "precision": 0.5022,
+   "recall_pos": 0.188,
+   "lift": 0.264,
+   "odds_ratio": 0.094,
+   "wracc": -0.0861,
+   "info_gain": 0.14469,
+   "fisher_p": 1.0
+  }
+ },
+ {
+  "id": "H23",
+  "name": "Never came back after a day away",
+  "steps": [
+   {
+    "any_of": [
+     "navigate",
+     "access",
+     "video",
+     "page_close",
+     "problem",
+     "discussion",
+     "wiki"
+    ]
+   }
+  ],
+  "absent": [
+   {
+    "token": "gap=lt_7d"
+   },
+   {
+    "token": "gap=ge_7d"
+   }
+  ],
+  "min_count": 3,
+  "expect": "dropout",
+  "train_selection_stats": {
+   "n_pos_match": 19185,
+   "n_neg_match": 1719,
+   "support_pos": 0.4778,
+   "support_neg": 0.1634,
+   "precision": 0.9178,
+   "recall_pos": 0.4778,
+   "lift": 2.923,
+   "odds_ratio": 4.683,
+   "wracc": 0.05171,
+   "info_gain": 0.05316,
+   "fisher_p": 0.0
+  }
+ },
+ {
+  "id": "H03",
+  "name": "Browse without problem attempts",
+  "steps": [
+   {
+    "any_of": [
+     "navigate",
+     "access"
+    ]
+   }
+  ],
+  "absent": [
+   {
+    "token": "problem"
+   }
+  ],
+  "min_count": 5,
+  "expect": "dropout",
+  "train_selection_stats": {
+   "n_pos_match": 16572,
+   "n_neg_match": 2091,
+   "support_pos": 0.4127,
+   "support_neg": 0.1988,
+   "precision": 0.888,
+   "recall_pos": 0.4127,
+   "lift": 2.076,
+   "odds_ratio": 2.832,
+   "wracc": 0.03519,
+   "info_gain": 0.0251,
+   "fisher_p": 0.0
+  }
+ },
+ {
+  "id": "M019",
+  "name": "access \u2192 navigate \u2192 problem",
+  "steps": [
+   {
+    "token": "access"
+   },
+   {
+    "token": "navigate"
+   },
+   {
+    "token": "problem"
+   }
+  ],
+  "train_selection_stats": {
+   "n_pos_match": 6292,
+   "n_neg_match": 7127,
+   "support_pos": 0.1567,
+   "support_neg": 0.6775,
+   "precision": 0.4689,
+   "recall_pos": 0.1567,
+   "lift": 0.231,
+   "odds_ratio": 0.088,
+   "wracc": -0.08567,
+   "info_gain": 0.14929,
+   "fisher_p": 0.9999999999811756
+  }
+ }
+]
