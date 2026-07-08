@@ -88,6 +88,12 @@ whatever machine runs them, 1 = serial; results are identical either way). For v
 long histories (10k+ events/account) the matcher is index-based and stays fast, but the
 big levers are still `--recent-seconds` preprocessing and a mining-time
 `--max-time-gap` — see `references/design.md` § Scaling notes before anything else.
+On datasets with tens of thousands of accounts add `--sample 8000` (stratified mining
+subsample): candidate *generation* only needs enough data for stable supports, and every
+candidate is re-verified on the full split afterwards. If the vocabulary is tiny (~10
+tokens, common in generic public benchmarks), unconstrained length-4 mining explodes
+combinatorially — mine `--max-len 3` unconstrained plus a second `--max-len 4 --max-gap 3`
+run for burst motifs instead.
 
 ## Phase 2 — LLM reasoning loop (your job)
 
@@ -126,8 +132,20 @@ patterns.
 ## Phase 3 — Rule-set selection
 
 Prune to a final set: drop patterns with pairwise match-set Jaccard > 0.6 (keep the
-higher-WRAcc one), then greedily pick patterns by *additional* positives covered until
-marginal gain < 1% of positives. Aim for ≤ 12 rules.
+higher-WRAcc one), then greedily pick patterns by marginal contribution. Aim for ≤ 12
+rules. Automated:
+
+```bash
+python scripts/select_ruleset.py data.jsonl --patterns hypotheses.json cands.json \
+  --pos-label fraud --split 0.3 --seed 42 --max-rules 12 --out final.json
+```
+
+It mixes mined-candidate and DSL files, dedupes, Jaccard-prunes, then greedily adds
+rules by *additional accounts of their own enriched class covered* (both directions
+contribute; protective rules get negative weights downstream). `--objective auc`
+instead finds the minimal discriminative core — it typically saturates after 2-4 rules
+because correlated rules add no AUC under fixed log-odds weights; that core size is
+itself worth reporting. Selection sees only the train split.
 
 ## Phase 4 — Holdout validation
 
@@ -135,6 +153,23 @@ Run the verifier once with the final set on the holdout. Report per-pattern prec
 recall, lift, Fisher p and BH-FDR q on holdout. If timestamps exist, also do a temporal
 split (train on early, validate on late) — behavioral fraud patterns drift.
 A pattern that collapses on holdout gets dropped, not re-tuned (that would burn the split).
+
+### Phase 4b — Benchmark comparison (optional, when the dataset has published numbers)
+
+To compare the rule set against literature benchmarks (e.g. a public dataset with a
+known classification AUC), score sequences with the rule set and report ROC AUC:
+
+```bash
+python scripts/evaluate_ruleset.py test.jsonl --patterns final.json \
+  --pos-label dropout --fit-data train.jsonl          # official benchmark split
+python scripts/evaluate_ruleset.py data.jsonl --patterns final.json \
+  --pos-label fraud --split 0.3 --seed 42             # internal holdout otherwise
+```
+
+Each rule is a binary feature; weights come from the fit split (`--score logodds`
+default, `logistic` for correlated rule sets, `count` as the crudest ablation). Weights
+are never fit on evaluation accounts. Report the AUC next to the published benchmarks
+with honest caveats (rule sets trade AUC for auditability; black-box SOTA will be higher).
 
 ## Phase 5 — Deliverable
 

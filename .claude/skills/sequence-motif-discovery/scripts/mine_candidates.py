@@ -151,6 +151,10 @@ def main():
     ap.add_argument("--exclude-tokens", nargs="*", default=[])
     ap.add_argument("--split", type=float, default=None,
                     help="holdout fraction to EXCLUDE from mining (stratified)")
+    ap.add_argument("--sample", type=int, default=None,
+                    help="mine on a stratified subsample of at most N accounts "
+                         "(from the mining split) — candidate generation only; "
+                         "verify_patterns.py still sees everything")
     ap.add_argument("--seed", type=int, default=42)
     ap.add_argument("--out", default=None)
     add_jobs_arg(ap)
@@ -166,6 +170,17 @@ def main():
     idx = list(range(len(ds)))
     if args.split:
         idx, _ = stratified_split(ds, args.split, args.seed)
+    if args.sample and args.sample < len(idx):
+        import random
+        rng = random.Random(args.seed)
+        by_label = {}
+        for i in idx:
+            by_label.setdefault(ds.labels[i], []).append(i)
+        frac = args.sample / len(idx)
+        idx = sorted(i for pool in by_label.values()
+                     for i in rng.sample(pool, max(1, round(len(pool) * frac))))
+        print(f"(mining on stratified subsample of {len(idx)} accounts)",
+              file=sys.stderr)
     seqs = [ds.seqs[i] for i in idx]
     times = [ds.times[i] for i in idx]
     labels = [ds.labels[i] for i in idx]
